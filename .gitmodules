@@ -1,0 +1,6 @@
+[submodule "src/etddf"]
+	path = src/etddf
+	url = https://github.com/COHRINT/etddf.git
+[submodule "src/cuprint"]
+	path = src/cuprint
+	url = https://github.com/COHRINT/cuprint.git
