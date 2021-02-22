@@ -16,7 +16,6 @@ add_message_files(
    MeasurementPackage.msg
    AssetEstimate.msg
    NetworkEstimate.msg
-   EtddfStatistics.msg
    PositionVelocity.msg
 )
 

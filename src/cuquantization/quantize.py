@@ -210,6 +210,7 @@ HEADERS = {
     'final_time' : 12
 }
 
+# Configure which delta multipliers are allowed
 delta_multiplier_options = list(np.arange(0,11,1))
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
     <arg name="landmark_file" default="$(find etddf)/config/landmarks_sim.yaml" />
     <arg name="strapdown" default="True" />
     <arg name="sonar" default="True" />
+    <arg name="simple_sharing" default="True" />
 
     <!-- not required, list of lists, index of outer 
     list corresponds to index in blue_team_names -->
@@ -25,6 +26,7 @@
         <rosparam command="load" file="$(find etddf)/config/measurements.yaml" />
         <rosparam command="load" file="$(arg landmark_file)" />
         <param name="strapdown" value="$(arg strapdown)" />
+        <param name="simple_sharing" value="$(arg simple_sharing" />
     </node>
 
     <!-- Launch the strapdown filter -->

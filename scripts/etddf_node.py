@@ -9,11 +9,12 @@ Filter operates in ENU
 """
 
 from etddf.delta_tier import DeltaTier
+from etddf.most_recent import MostRecent
 import rospy
 import threading
 from minau.msg import ControlStatus
-from etddf.msg import Measurement, MeasurementPackage, NetworkEstimate, AssetEstimate, EtddfStatistics, PositionVelocity
-from etddf.srv import GetMeasurementPackage
+from etddf_minau.msg import Measurement, MeasurementPackage, NetworkEstimate, AssetEstimate, PositionVelocity
+from etddf_minau.srv import GetMeasurementPackage
 import numpy as np
 import tf
 np.set_printoptions(suppress=True)
@@ -60,20 +61,32 @@ class ETDDF_Node:
 
         self.cuprint = CUPrint(rospy.get_name())
         
-        self.filter = DeltaTier(NUM_OWNSHIP_STATES, \
-                                x0,\
-                                P0,\
-                                buffer_size,\
-                                meas_space_table,\
-                                missed_meas_tolerance_table, \
-                                delta_codebook_table,\
-                                delta_tiers,\
-                                self.asset2id,\
-                                my_name)
+        if rospy.get_param("~simple_sharing"):
+            self.cuprint("Sharing most recent")
+            self.filter = MostRecent(NUM_OWNSHIP_STATES, \
+                                    x0,\
+                                    P0,\
+                                    buffer_size,\
+                                    meas_space_table,\
+                                    missed_meas_tolerance_table, \
+                                    delta_codebook_table,\
+                                    delta_tiers,\
+                                    self.asset2id,\
+                                    my_name)
+        else:
+            self.cuprint("Delta Tiering")
+            self.filter = DeltaTier(NUM_OWNSHIP_STATES, \
+                                    x0,\
+                                    P0,\
+                                    buffer_size,\
+                                    meas_space_table,\
+                                    missed_meas_tolerance_table, \
+                                    delta_codebook_table,\
+                                    delta_tiers,\
+                                    self.asset2id,\
+                                    my_name)
         
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
-        self.statistics_pub = rospy.Publisher("etddf/statistics", EtddfStatistics, queue_size=10)
-        self.statistics = EtddfStatistics(0, rospy.get_rostime(), 0, 0, delta_tiers, [0 for _ in delta_tiers], 0.0, [], False)
 
         self.asset_pub_dict = {}
         for asset in self.asset2id.keys():
@@ -181,15 +194,6 @@ class ETDDF_Node:
             # self.filter.add_meas(sonar_z)
             # self.cuprint("meas added")
 
-    def publish_stats(self, last_update_time):
-        self.statistics.seq = self.update_seq
-        self.statistics.stamp = last_update_time
-        self.statistics.overflown, delta, buffer = self.filter.peek_buffer()
-        self.statistics.current_lowest_multiplier = delta
-        meas_name_list = [x.meas_type for x in buffer]
-        self.statistics.current_lowest_buffer = meas_name_list
-        self.statistics_pub.publish(self.statistics)
-
     def no_nav_filter_callback(self, event):
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
@@ -218,7 +222,6 @@ class ETDDF_Node:
         self.last_update_time = t_now
         self.update_seq += 1
         self.update_lock.release()
-        self.publish_stats(t_now)
 
     def nav_filter_callback(self, pv_msg):
         
@@ -277,7 +280,6 @@ class ETDDF_Node:
         self.last_update_time = t_now
         self.update_seq += 1
         self.update_lock.release()
-        self.publish_stats(t_now)
     
     def control_status_callback(self, msg):
         self.update_lock.acquire()
@@ -383,17 +385,13 @@ class ETDDF_Node:
                 if m.measured_asset in self.red_asset_names and not self.red_asset_found:
                     self.red_asset_found = True
                     self.cuprint("Red asset measurement received!")
-            implicit_cnt, explicit_cnt = self.filter.catch_up(msg.delta_multiplier, msg.measurements)
+            self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q)
             self.cuprint("...caught up")
             self.update_lock.release()
-            self.statistics.implicit_count += implicit_cnt
-            self.statistics.explicit_count += explicit_cnt
 
     def get_meas_pkg_callback(self, req):
         self.cuprint("pulling buffer")
         delta, buffer = self.filter.pull_buffer()
-        ind = self.statistics.delta_tiers.index(delta)
-        self.statistics.buffer_counts[ind] += 1
         mp = MeasurementPackage(buffer, self.my_name, delta)
         print(mp)
         return mp
