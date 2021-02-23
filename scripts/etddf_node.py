@@ -187,11 +187,11 @@ class ETDDF_Node:
                 if target.id in self.red_asset_names and not self.red_asset_found:
                     self.cuprint("Red Asset detected!")
                     self.red_asset_found = True
-            # sonar_z = Measurement("sonar_z", now, self.my_name, target.id, z, self.default_meas_variance["sonar_z"], []
+            sonar_z = Measurement("sonar_z", now, self.my_name, target.id, z, self.default_meas_variance["sonar_z"], [])
 
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
-            # self.filter.add_meas(sonar_z)
+            self.filter.add_meas(sonar_z)
             # self.cuprint("meas added")
 
     def no_nav_filter_callback(self, event):
@@ -356,7 +356,7 @@ class ETDDF_Node:
                     meas.global_pose = list(meas.global_pose)
                     # self.cuprint("range: " + str(meas.data))
                     meas.variance = self.default_meas_variance["modem_range"]
-                self.filter.add_meas(meas, force_fuse=True)
+                self.filter.add_meas(meas)
 
         # Modem Meas taken by me
         elif msg.src_asset == self.my_name:
@@ -373,7 +373,7 @@ class ETDDF_Node:
                 elif meas.meas_type == "modem_range":
                     meas.global_pose = list(meas.global_pose)
                     meas.variance = self.default_meas_variance["modem_range"]
-                self.filter.add_meas(meas, force_fuse=True)
+                self.filter.add_meas(meas)
 
         # Buffer
         else:
@@ -566,7 +566,7 @@ if __name__ == "__main__":
     blue_team_positions = rospy.get_param("~blue_team_positions")
 
     # Don't track surface if it isn't this agent
-    if my_name != "surface":
+    if my_name != "surface" and "surface" in blue_team_names:
         ind = blue_team_names.index("surface")
         if ind >= 0:
             blue_team_names.pop(ind)
@@ -584,7 +584,7 @@ if __name__ == "__main__":
         num_assets = len(asset2id)
     x0, P0 = get_initial_estimate(num_assets * NUM_OWNSHIP_STATES, blue_team_names, blue_team_positions)
     Q = get_process_noise(num_assets * NUM_OWNSHIP_STATES, blue_team_names)
-    rospy.logwarn("{}, {}, {}, {}".format(my_name, x0.shape, P0.shape, Q.shape))
+    # rospy.logwarn("{}, {}, {}, {}".format(my_name, x0.shape, P0.shape, Q.shape))
     default_meas_variance = get_default_meas_variance()
     use_control_input = rospy.get_param("~use_control_input")
 

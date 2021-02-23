@@ -1,7 +1,7 @@
 <launch>
     <arg name="my_name" default="bluerov2_3" />
     <arg name="blue_team_names" default="[]" />
-    <arg name="landmark_file" default="$(find etddf)/config/landmarks_sim.yaml" />
+    <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_sim.yaml" />
     <arg name="strapdown" default="True" />
     <arg name="sonar" default="True" />
     <arg name="simple_sharing" default="True" />
@@ -11,7 +11,8 @@
     <arg name="blue_team_positions_enu" default="[]" /> 
 
     <arg name="red_team_names" default="[]" />
-    <arg name="config_file" default="$(find etddf)/config/etddf.yaml" />
+    <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
+    <arg name="strapdown_config_file" default="$(find etddf_minau)/config/strapdown.yaml" />
     <arg name="starting_position_enu" default="[0,0,0]" /> <!-- [x,y,z] -->
     <arg name="starting_yaw_enu" default="0.0" />
     <arg name="wait_on_startup" default="1.0" />
@@ -23,7 +24,7 @@
         <rosparam param="red_team_names" subst_value="True">$(arg red_team_names)</rosparam> 
         <rosparam param="starting_position" subst_value="True">$(arg starting_position_enu)</rosparam> 
         <rosparam command="load" file="$(arg config_file)" />        
-        <rosparam command="load" file="$(find etddf)/config/measurements.yaml" />
+        <rosparam command="load" file="$(find etddf_minau)/config/measurements.yaml" />
         <rosparam command="load" file="$(arg landmark_file)" />
         <param name="strapdown" value="$(arg strapdown)" />
         <param name="simple_sharing" value="$(arg simple_sharing" />

@@ -1,6 +1,6 @@
 import rospy
 
-from etddf.msg import MeasurementPackage, Measurement
+from etddf_minau.msg import MeasurementPackage, Measurement
 import numpy as np
 import sys
 import rospy
@@ -205,9 +205,12 @@ HEADERS = {
     'sonar_y' : 7,
     'sonar_y_bookstart' : 8,
     'sonar_y_bookend' : 9,
-    'modem_range' : 10,
-    'modem_azimuth' : 11,
-    'final_time' : 12
+    'sonar_z' : 10,
+    'sonar_z_bookstart' : 11,
+    "sonar_z_bookend" : 12,
+    'modem_range' : 13,
+    'modem_azimuth' : 14,
+    'final_time' : 15
 }
 
 # Configure which delta multipliers are allowed

@@ -18,7 +18,7 @@ from scipy.linalg import block_diag, sqrtm
 import tf
 import threading
 import sys
-from etddf.msg import PositionVelocity
+from etddf_minau.msg import PositionVelocity
 from cuprint.cuprint import CUPrint
 
 __author__ = "Luke Barbier"

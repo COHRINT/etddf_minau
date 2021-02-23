@@ -7,6 +7,6 @@
 # asset being no longer in view of the asset's sonar. These are indicated by meas_type="*_bookend". If the
 # measuremnt stream continues through the end of "final_time" a bookend is not needed.
 
-etddf/Measurement[] measurements
+etddf_minau/Measurement[] measurements
 string src_asset
 float32 delta_multiplier
