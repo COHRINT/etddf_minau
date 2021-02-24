@@ -59,11 +59,12 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, packet_size=32):
 
         # Compression
         if meas.meas_type == "depth":
-            if meas.data < -3 or meas.data > 0:
-                raise ValueError("Depth meas outside of compression bounds: " + str(meas.data) + ' for ' + str([-3,0]))
-            # Range [-3,0]
+            max_depth = -10 # Choose quantization bounds on the depth
+            if meas.data < max_depth or meas.data > 0:
+                raise ValueError("Depth meas outside of compression bounds: " + str(meas.data) + ' for ' + str([max_depth,0]))
+            # Range [max_depth,0]
             # 256 bins
-            bin_per_meter = 255 / -3.0
+            bin_per_meter = 255 / max_depth
             data_bin = int(meas.data * bin_per_meter)
         elif meas.meas_type in ["sonar_x", "sonar_y"]:
             # Range [-10,10] -> [0, 20] Shift range for convenience
@@ -165,7 +166,7 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, global_pose)
             data = 0
             # Compression
             if meas_type == "depth":
-                bin_per_meter = 255 / -3.0
+                bin_per_meter = 255 / -10.0
                 data = data_bin / bin_per_meter
             elif meas_type in ["sonar_x", "sonar_y"]:
                 bin_per_meter = 255 / 40.0
