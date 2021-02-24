@@ -100,7 +100,7 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, packet_size=32):
             byte_string.append(data_bin)
 
     if len(byte_string) > packet_size:
-        raise ValueError("Compression failed. Byte string is greater than packet size")
+        raise ValueError("Compression failed. Byte string {} is greater than packet size {} with meas count {}".format(len(byte_string), packet_size, len(meas_pkg.measurements)))
 
     # Pack empty values to the end of the buffer for unused space
     byte_string.extend([HEADERS['empty'] for x in range(packet_size - len(byte_string))])
@@ -168,8 +168,8 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, global_pose)
                 bin_per_meter = 255 / -3.0
                 data = data_bin / bin_per_meter
             elif meas_type in ["sonar_x", "sonar_y"]:
-                bin_per_meter = 255 / 20.0
-                data = data_bin / bin_per_meter - 10.0
+                bin_per_meter = 255 / 40.0
+                data = data_bin / bin_per_meter - 20.0
                 if "landmark" not in measured_agent: # Sonar measurements between agents have global_pose as empty list
                     msg_global_pose = []
             elif meas_type == "modem_range":
@@ -180,13 +180,13 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, global_pose)
                 data = data_bin / bin_per_meter
                 data = np.mod( data + 180, 360) - 180 # -180 to 180
             
-            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, data, 0.0, msg_global_pose)
+            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, data, 0.0, msg_global_pose, 0.0)
             mp.measurements.append(m)
             index += 1
         else:
             if "sonar" in meas_type and "landmark" not in meas_type:
                 msg_global_pose = []
-            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, 0.0, 0.0, msg_global_pose)
+            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, 0.0, 0.0, msg_global_pose, 0.0)
             mp.measurements.append(m)
 
     return mp

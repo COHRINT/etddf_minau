@@ -384,7 +384,8 @@ class StrapdownINS:
             H = np.zeros((2,NUM_STATES))
             H[0, 4] = 1
             H[1, 5] = 1
-            R = np.eye(2) * 0.025
+            # R = np.eye(2) * 0.025
+            R = np.eye(2) * 0.005
             meas = np.array([[self.dvl_x, self.dvl_y]]).T
             pred = np.array([[self.x[4], self.x[5]]]).T
             tmp = dot( dot(H, self.P), H.T) + R
@@ -476,7 +477,6 @@ class StrapdownINS:
             self.dvl_y = None
 
         if self.last_intersection != None:
-            self.cuprint("Received CI result, correcting")
             pos = [self.last_intersection.position.x, self.last_intersection.position.y, self.last_intersection.position.z]
             vel = [self.last_intersection.velocity.x, self.last_intersection.velocity.y, self.last_intersection.velocity.z]
             x_CI = np.array([pos[0], pos[1], pos[2], vel[0], vel[1], vel[2]]).reshape(-1,1)

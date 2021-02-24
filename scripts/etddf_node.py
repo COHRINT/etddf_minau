@@ -179,15 +179,15 @@ class ETDDF_Node:
             now = rospy.get_rostime()
             sonar_x, sonar_y = None, None
             if "landmark_" in target.id:
-                sonar_x = Measurement("sonar_x", now, self.my_name, "", x, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]])
-                sonar_y = Measurement("sonar_y", now, self.my_name, "", y, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]])
+                sonar_x = Measurement("sonar_x", now, self.my_name, "", x, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]], -1.0)
+                sonar_y = Measurement("sonar_y", now, self.my_name, "", y, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]], -1.0)
             else:
-                sonar_x = Measurement("sonar_x", now, self.my_name, target.id, x, self.default_meas_variance["sonar_x"], [])
-                sonar_y = Measurement("sonar_y", now, self.my_name, target.id, y, self.default_meas_variance["sonar_y"], [])
+                sonar_x = Measurement("sonar_x", now, self.my_name, target.id, x, self.default_meas_variance["sonar_x"], [], -1.0)
+                sonar_y = Measurement("sonar_y", now, self.my_name, target.id, y, self.default_meas_variance["sonar_y"], [], -1.0)
                 if target.id in self.red_asset_names and not self.red_asset_found:
                     self.cuprint("Red Asset detected!")
                     self.red_asset_found = True
-            sonar_z = Measurement("sonar_z", now, self.my_name, target.id, z, self.default_meas_variance["sonar_z"], [])
+            sonar_z = Measurement("sonar_z", now, self.my_name, target.id, z, self.default_meas_variance["sonar_z"], [], -1.0)
 
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
@@ -212,7 +212,7 @@ class ETDDF_Node:
         z_r = self.default_meas_variance["depth"]
         z_data = self.last_depth_meas
         if z_data != None:
-            z = Measurement("depth", t_now, self.my_name,"", z_data, z_r, [])
+            z = Measurement("depth", t_now, self.my_name,"", z_data, z_r, [], -1.0)
             self.filter.add_meas(z)
             self.last_depth_meas = None
 
@@ -245,15 +245,15 @@ class ETDDF_Node:
         z_r = self.default_meas_variance["depth"]
         z_data = self.last_depth_meas
         if z_data != None:
-            z = Measurement("depth", t_now, self.my_name,"", z_data, z_r, []) # Flip z data to transform enu -> NED
+            z = Measurement("depth", t_now, self.my_name,"", z_data, z_r, [], -1.0) # Flip z data to transform enu -> NED
             self.filter.add_meas(z)
             self.last_depth_meas = None
         if self.data_x != None:
-            x = Measurement("gps_x", t_now, self.my_name,"", self.data_x, 0.1, [])
+            x = Measurement("gps_x", t_now, self.my_name,"", self.data_x, 0.1, [], -1.0)
             self.filter.add_meas(x)
             self.data_x = None
         if self.data_y != None:
-            y = Measurement("gps_y", t_now, self.my_name,"", self.data_y, 0.1, [])
+            y = Measurement("gps_y", t_now, self.my_name,"", self.data_y, 0.1, [], -1.0)
             self.filter.add_meas(y)
             self.data_y = None
 
@@ -378,22 +378,30 @@ class ETDDF_Node:
         # Buffer
         else:
             self.cuprint("receiving buffer")
-            self.update_lock.acquire()
+            
 
             # Loop through buffer and see if we've found the red agent
-            for m in msg.measurements:
-                if m.measured_asset in self.red_asset_names and not self.red_asset_found:
+            
+            for i in range(len(msg.measurements)):
+                if msg.measurements[i].measured_asset in self.red_asset_names and not self.red_asset_found:
                     self.red_asset_found = True
                     self.cuprint("Red asset measurement received!")
+                meas_type = msg.measurements[i].meas_type.split("_book")[0]
+                if meas_type == "final_time":
+                    continue
+                msg.measurements[i].variance = self.default_meas_variance[meas_type]
+            self.update_lock.acquire()
+            print(msg.measurements)
             self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q)
             self.cuprint("...caught up")
             self.update_lock.release()
 
     def get_meas_pkg_callback(self, req):
         self.cuprint("pulling buffer")
+        self.update_lock.acquire()
         delta, buffer = self.filter.pull_buffer()
+        self.update_lock.release()
         mp = MeasurementPackage(buffer, self.my_name, delta)
-        print(mp)
         return mp
 
 

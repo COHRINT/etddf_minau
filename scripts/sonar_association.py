@@ -29,9 +29,10 @@ class SonarAssociator:
         for b in blue_team:
             if b == "surface":
                 continue
-            rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
-            self.cuprint("Waiting for msg: " + "etddf/estimate/" + b)
-            rospy.wait_for_message("etddf/estimate/" + b, Odometry)
+            # rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
+            rospy.Subscriber("/" + b+"/pose_gt", Odometry, self.blue_team_callback, callback_args=b)
+            # self.cuprint("Waiting for msg: " + "etddf/estimate/" + b)
+            # rospy.wait_for_message("etddf/estimate/" + b, Odometry)
 
         self.pub = rospy.Publisher("sonar_processing/target_list/associated", SonarTargetList, queue_size=10)
 

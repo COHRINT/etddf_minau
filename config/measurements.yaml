@@ -2,37 +2,37 @@ measurements:
   depth:
     base_et_delta: 1.0
     default_sd: 0.1
-    buffer_size: 2 # NOT SHARED
+    buffer_size: 3 # NOT SHARED
     missed_tolerance: 10 # How many of these messages do we need to miss on updates cycles before we indicate a bookend
 
   modem_range:
     base_et_delta: 1.0
     default_sd: 0.3
-    buffer_size: 2 # NOT SHARED
+    buffer_size: 3 # NOT SHARED
     missed_tolerance: 1 # NOT SHARED
 
   modem_azimuth: # radians
     base_et_delta: 0.0
     default_sd: 0.1
-    buffer_size: 2 # NOT SHARED
+    buffer_size: 3 # NOT SHARED
     missed_tolerance: 1 # NOT SHARED
 
   sonar_x:
-    base_et_delta: 1.0
-    default_sd: 1
-    buffer_size: 2
+    base_et_delta: 0.3
+    default_sd: 0.5
+    buffer_size: 3
     missed_tolerance: 10
 
   sonar_y:
-    base_et_delta: 1.0
-    default_sd: 1
-    buffer_size: 2
+    base_et_delta: 0.3
+    default_sd: 0.5
+    buffer_size: 3
     missed_tolerance: 10
 
   sonar_z:
-    base_et_delta: 1.0
+    base_et_delta: 0.3
     default_sd: 0.5
-    buffer_size: 2
+    buffer_size: 3
     missed_tolerance: 10
 
   gps_x: 

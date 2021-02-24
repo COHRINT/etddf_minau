@@ -5,3 +5,4 @@ string measured_asset
 float32 data
 float32 variance
 float32[] global_pose # Empty for all but global measurements
+float32 et_delta
