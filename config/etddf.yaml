@@ -9,7 +9,7 @@ measurement_topics:
   depth: baro
   imu_ci: strapdown/intersection # None to not intersect
   imu_est: strapdown/estimate
-  sonar: "sonar_processing/target_list/associated__" # "sonar_processing/target_list/"
+  sonar: "sonar_processing/target_list/associated" # "sonar_processing/target_list/"
 
 ### Buffer space configurations ###
 buffer_space:

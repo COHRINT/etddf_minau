@@ -391,7 +391,6 @@ class ETDDF_Node:
                     continue
                 msg.measurements[i].variance = self.default_meas_variance[meas_type]
             self.update_lock.acquire()
-            print(msg.measurements)
             self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q)
             self.cuprint("...caught up")
             self.update_lock.release()
