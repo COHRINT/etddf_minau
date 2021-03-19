@@ -9,7 +9,7 @@ import rospy
 from std_msgs.msg import Header, Float64
 from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Pose, Point, Quaternion, PoseWithCovariance, Vector3, Twist, TwistWithCovariance
+from geometry_msgs.msg import Pose, Point, Quaternion, PoseWithCovariance, Vector3,Vector3Stamped, Twist, TwistWithCovariance
 import numpy as np
 from numpy.linalg import inv
 from numpy import dot
@@ -101,7 +101,7 @@ class StrapdownINS:
         theta = self.x[3]
         theta2 = theta - np.pi / 2.0
         body2inertial = np.array([[np.cos(theta), np.cos(theta2)],[np.sin(theta), np.sin(theta2)]])
-        vel_inertial = np.dot(body2inertial, np.array([[msg.x],[msg.y]]))
+        vel_inertial = np.dot(body2inertial, np.array([[msg.vector.x],[msg.vector.y]]))
         self.dvl_x = vel_inertial[0,0]
         self.dvl_y = vel_inertial[1,0]
 
