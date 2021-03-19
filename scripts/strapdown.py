@@ -61,7 +61,7 @@ class StrapdownINS:
         rospy.sleep(rospy.get_param("~wait_on_startup"))
         # rospy.Subscriber("mavros/global_position/rel_alt", Float64, self.depth_callback, queue_size=1)
         rospy.Subscriber("baro", Float64, self.depth_callback, queue_size=1)
-        rospy.Subscriber("dvl", Vector3, self.dvl_callback, queue_size=1)
+        rospy.Subscriber("dvl", Vector3Stamped, self.dvl_callback, queue_size=1)
         # rospy.Subscriber("pose_gt", Odometry, self.gps_callback, queue_size=1)
 
         if strapdown:
