@@ -13,7 +13,7 @@ measurement_topics:
 
 ### Buffer space configurations ###
 buffer_space:
-  capacity: 30 # Total capacity
+  capacity: 28 # Total capacity
   bookstart: 2 # Space for indicating START of measurement stream
   bookend: 2 # Space for indicating STOP of meas stream
   final_time: 2 # Space to send last time in buffer
