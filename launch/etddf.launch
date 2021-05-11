@@ -4,7 +4,7 @@
     <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_sim.yaml" />
     <arg name="strapdown" default="True" />
     <arg name="sonar" default="True" />
-    <arg name="simple_sharing" default="True" />
+    <arg name="simple_sharing" default="False" />
     <!-- <arg name="simple_sharing" default="False" /> -->
 
     <!-- not required, list of lists, index of outer 
@@ -40,11 +40,11 @@
     </node>
 
     <!-- Launch the association node -->
-    <node name="sonar_association" pkg="etddf_minau" type="sonar_association.py" output="screen">
+    <!-- <node name="sonar_association" pkg="etddf_minau" type="sonar_association.py" output="screen">
         <rosparam command="load" file="$(arg landmark_file)" />
         <rosparam param="blue_team_names" subst_value="True">$(arg blue_team_names)</rosparam> 
         <rosparam param="red_team_names" subst_value="True">$(arg red_team_names)</rosparam> 
         <param name="threshold" value="1" />
-    </node>
+    </node> -->
 
 </launch>

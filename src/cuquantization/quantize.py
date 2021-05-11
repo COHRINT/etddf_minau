@@ -77,9 +77,9 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, packet_size=32):
         elif meas.meas_type == "modem_range":
             # Range [0, 20]
             # 256 bins
-            if meas.data < 0 or meas.data > 20:
-                raise ValueError("Modem range meas outside of compression bounds: " + str(meas.data) + ' for ' + str([0,20]))
-            bin_per_meter = 255 / 20.0
+            if meas.data < 0 or meas.data > 30:
+                raise ValueError("Modem range meas outside of compression bounds: " + str(meas.data) + ' for ' + str([0,30]))
+            bin_per_meter = 255 / 30.0
             data_bin = int(meas.data * bin_per_meter)
         elif meas.meas_type == "modem_azimuth":
             # Range [0, 360]
@@ -174,7 +174,7 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, global_pose)
                 if "landmark" not in measured_agent: # Sonar measurements between agents have global_pose as empty list
                     msg_global_pose = []
             elif meas_type == "modem_range":
-                bin_per_meter = 255 / 20.0
+                bin_per_meter = 255 / 30.0
                 data = data_bin / bin_per_meter
             elif meas_type == "modem_azimuth":
                 bin_per_meter = 255 / 360.0
@@ -215,7 +215,8 @@ HEADERS = {
 }
 
 # Configure which delta multipliers are allowed
-delta_multiplier_options = list(np.arange(0,11,1))
+# delta_multiplier_options = list(np.arange(0,11,1))
+delta_multiplier_options = [0,1,3,5,7,10,13,15,17,20]
 
 if __name__ == "__main__":
     # Create measurement package

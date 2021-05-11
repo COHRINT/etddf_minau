@@ -98,12 +98,14 @@ class StrapdownINS:
         self.last_intersection = msg
 
     def dvl_callback(self, msg):
-        theta = self.x[3]
-        theta2 = theta - np.pi / 2.0
-        body2inertial = np.array([[np.cos(theta), np.cos(theta2)],[np.sin(theta), np.sin(theta2)]])
-        vel_inertial = np.dot(body2inertial, np.array([[msg.vector.x],[msg.vector.y]]))
-        self.dvl_x = vel_inertial[0,0]
-        self.dvl_y = vel_inertial[1,0]
+        # theta = self.x[3]
+        # theta2 = theta - np.pi / 2.0
+        # body2inertial = np.array([[np.cos(theta), np.cos(theta2)],[np.sin(theta), np.sin(theta2)]])
+        # vel_inertial = np.dot(body2inertial, np.array([[msg.vector.x],[msg.vector.y]]))
+        # self.dvl_x = vel_inertial[0,0]
+        # self.dvl_y = vel_inertial[1,0]
+        self.dvl_x = msg.vector.x
+        self.dvl_y = msg.vector.y
 
     def gps_callback(self, msg):
         # if self.skip_multiplexer % 300 == 0:
