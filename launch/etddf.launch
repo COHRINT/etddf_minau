@@ -5,8 +5,8 @@
     <arg name="strapdown" default="True" />
     <arg name="launch_strapdown" default="True" />
     <arg name="sonar" default="True" />
-    <arg name="simple_sharing" default="True" />
-    <!-- <arg name="simple_sharing" default="False" /> -->
+    <!-- <arg name="simple_sharing" default="True" /> -->
+    <arg name="simple_sharing" default="False" />
 
     <!-- not required, list of lists, index of outer 
     list corresponds to index in blue_team_names -->
