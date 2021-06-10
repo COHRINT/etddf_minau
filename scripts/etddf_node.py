@@ -72,7 +72,8 @@ class ETDDF_Node:
                                     delta_codebook_table,\
                                     delta_tiers,\
                                     self.asset2id,\
-                                    my_name
+                                    my_name,
+                                    default_meas_variance
             )
         else:
             self.cuprint("Delta Tiering")
@@ -135,6 +136,7 @@ class ETDDF_Node:
 
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
+            self.cuprint("Subscribing to sonar")
             rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
         
         # rospy.Subscriber("pose_gt", Odometry, self.gps_callback, queue_size=1)
@@ -197,7 +199,7 @@ class ETDDF_Node:
 
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
-            self.filter.add_meas(sonar_z)
+            # self.filter.add_meas(sonar_z)
             # self.cuprint("meas added")
         self.update_lock.release()
 
@@ -216,7 +218,6 @@ class ETDDF_Node:
         self.update_lock.release()
 
     def nav_filter_callback(self, pv_msg):
-        
         # Update at specified rate
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
@@ -227,25 +228,6 @@ class ETDDF_Node:
 
         u = np.zeros((3,1))
         Q = self.Q
-        
-
-        ### Run Correction ###
-
-        # Construct depth measurement
-        # z_r = self.default_meas_variance["depth"]
-        # z_data = self.last_depth_meas
-        # if z_data != None:
-        #     z = Measurement("depth", t_now, self.my_name,"", z_data, z_r, [], -1.0) # Flip z data to transform enu -> NED
-        #     self.filter.add_meas(z)
-        #     self.last_depth_meas = None
-        # if self.data_x != None:
-        #     x = Measurement("gps_x", t_now, self.my_name,"", self.data_x, 0.1, [], -1.0)
-        #     self.filter.add_meas(x)
-        #     self.data_x = None
-        # if self.data_y != None:
-        #     y = Measurement("gps_y", t_now, self.my_name,"", self.data_y, 0.1, [], -1.0)
-        #     self.filter.add_meas(y)
-        #     self.data_y = None
 
         # Turn odom estimate into numpy
         mean = np.array([[pv_msg.position.x, pv_msg.position.y, pv_msg.position.z, \
@@ -326,9 +308,10 @@ class ETDDF_Node:
     def meas_pkg_callback(self, msg):
         self.update_lock.acquire()
         # Modem Meas taken by surface
-        modem_indices = []
+        
         if msg.src_asset == "surface":
             self.cuprint("Receiving Surface Modem Measurements")
+            modem_indices = []
             for meas in msg.measurements:
                 # Approximate the fuse on the next update, so we can get other asset's position immediately
                 if meas.meas_type == "modem_elevation":
@@ -343,26 +326,9 @@ class ETDDF_Node:
                     meas.global_pose = list(meas.global_pose)
                     # self.cuprint("range: " + str(meas.data))
                     meas.variance = self.default_meas_variance["modem_range"]
-                ind = self.filter.add_meas(meas)
+                ind = self.filter.add_meas(meas, common=True)
                 modem_indices.append(ind)
-
-        # Modem Meas taken by me
-        elif msg.src_asset == self.my_name:
-            # self.cuprint("Receiving Modem Measurements Taken by Me")
-            for meas in msg.measurements:
-                # Approximate the fuse on the next update, so we can get other asset's position immediately
-                if meas.meas_type == "modem_elevation":
-                    rospy.logerr("Ignoring Modem Elevation Measurement since we have depth measurements")
-                    continue
-                elif meas.meas_type == "modem_azimuth":
-                    meas.global_pose = list(meas.global_pose)
-                    meas.data = (meas.data * np.pi) / 180
-                    meas.variance = self.default_meas_variance["modem_azimuth"]
-                elif meas.meas_type == "modem_range":
-                    meas.global_pose = list(meas.global_pose)
-                    meas.variance = self.default_meas_variance["modem_range"]
-                ind = self.filter.add_meas(meas)
-                modem_indices.append(ind)
+            self.filter.catch_up(min(modem_indices))
 
         # Buffer
         else:
@@ -373,16 +339,13 @@ class ETDDF_Node:
                     self.red_asset_found = True
                     self.cuprint("Red asset measurement received!")
             
-            ind = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
-            modem_indices.append(ind)
+            implicit_cnt, explicit_cnt = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
             
             # implicit_cnt, explicit_cnt = self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q, msg.all_measurements)
-            # self.meas_pub_explicit.publish(Int64(explicit_cnt))
-            # self.meas_pub_implicit.publish(Int64(implicit_cnt))
+            self.meas_pub_explicit.publish(Int64(explicit_cnt))
+            self.meas_pub_implicit.publish(Int64(implicit_cnt))
             # self.cuprint("...caught up")
 
-        self.filter.catch_up(min(modem_indices))
-        
         self.update_lock.release()
         self.cuprint("Finished")
 
@@ -392,6 +355,7 @@ class ETDDF_Node:
         delta, buffer = self.filter.pull_buffer()
         self.update_lock.release()
         mp = MeasurementPackage(buffer, buffer, self.my_name, delta)
+        self.cuprint("returning buffer")
         return mp
 
 ################################

@@ -3,8 +3,9 @@
     <arg name="blue_team_names" default="[]" />
     <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_sim.yaml" />
     <arg name="strapdown" default="True" />
+    <arg name="launch_strapdown" default="True" />
     <arg name="sonar" default="True" />
-    <arg name="simple_sharing" default="False" />
+    <arg name="simple_sharing" default="True" />
     <!-- <arg name="simple_sharing" default="False" /> -->
 
     <!-- not required, list of lists, index of outer 
@@ -32,7 +33,7 @@
     </node>
 
     <!-- Launch the strapdown filter -->
-    <node name="strapdown" pkg="etddf_minau" type="strapdown.py" output="screen">
+    <node name="strapdown" pkg="etddf_minau" type="strapdown.py" output="screen" if="$(arg launch_strapdown)">
         <rosparam command="load" file="$(arg strapdown_config_file)" />
         <rosparam param="starting_position" subst_value="True">$(arg starting_position_enu)</rosparam> 
         <param name="starting_yaw" value="$(arg starting_yaw_enu)" />

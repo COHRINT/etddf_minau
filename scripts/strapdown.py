@@ -360,7 +360,7 @@ class StrapdownINS:
         if self.last_depth is not None:
             H = np.zeros((1,NUM_STATES))
             H[0,2] = 1
-            R = 0.1
+            R = 0.3
             tmp = dot( dot(H, self.P), H.T) + R
             K = dot(self.P, dot( H.T, inv( tmp )) )
             self.x = self.x + dot(K,self.last_depth-self.x[2]).reshape(NUM_STATES)
@@ -386,8 +386,8 @@ class StrapdownINS:
             H = np.zeros((2,NUM_STATES))
             H[0, 4] = 1
             H[1, 5] = 1
-            # R = np.eye(2) * 0.025
-            R = np.eye(2) * 0.005
+            R = np.eye(2) * 0.01
+            # R = np.eye(2) * 0.005
             meas = np.array([[self.dvl_x, self.dvl_y]]).T
             pred = np.array([[self.x[4], self.x[5]]]).T
             tmp = dot( dot(H, self.P), H.T) + R

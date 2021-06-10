@@ -58,7 +58,14 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, packet_size=32):
         data_bin = 0
 
         # Compression
-        if meas.meas_type == "depth":
+        if "burst" in meas.meas_type:
+            num_msgs = int(meas.data)
+            freq = int( (meas.data - num_msgs) * 100 )
+            assert num_msgs < 256
+            data_bin = num_msgs
+            # data_bin = [num_msgs, freq]
+        elif meas.meas_type == "depth":
+            raise NotImplementedError("Depth")
             max_depth = -10 # Choose quantization bounds on the depth
             if meas.data < max_depth or meas.data > 0:
                 raise ValueError("Depth meas outside of compression bounds: " + str(meas.data) + ' for ' + str([max_depth,0]))
@@ -97,8 +104,10 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, packet_size=32):
         full_header = header << 4 | header2
         byte_string.append(full_header)
         byte_string.append(timestamp)
-        if "book" not in meas.meas_type:
+        if type(data_bin) != list:
             byte_string.append(data_bin)
+        else:
+            byte_string.extend(data_bin)
 
     if len(byte_string) > packet_size:
         raise ValueError("Compression failed. Byte string {} is greater than packet size {} with meas count {}".format(len(byte_string), packet_size, len(meas_pkg.measurements)))
@@ -161,34 +170,44 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, global_pose)
 
         index += 1
 
-        if "book" not in meas_type:
-            data_bin = byte_arr[index]
-            data = 0
-            # Compression
-            if meas_type == "depth":
-                bin_per_meter = 255 / -10.0
-                data = data_bin / bin_per_meter
-            elif meas_type in ["sonar_x", "sonar_y"]:
-                bin_per_meter = 255 / 40.0
-                data = data_bin / bin_per_meter - 20.0
-                if "landmark" not in measured_agent: # Sonar measurements between agents have global_pose as empty list
-                    msg_global_pose = []
-            elif meas_type == "modem_range":
-                bin_per_meter = 255 / 30.0
-                data = data_bin / bin_per_meter
-            elif meas_type == "modem_azimuth":
-                bin_per_meter = 255 / 360.0
-                data = data_bin / bin_per_meter
-                data = np.mod( data + 180, 360) - 180 # -180 to 180
+        data_bin = byte_arr[index]
+        data = 0
+        # Compression
+        if "burst" in meas_type:
+            num_msgs = data_bin
+
+            # index += 1
+            # data_bin = byte_arr[index]
+
+            # freq = data_bin
+            # freq /= 100.0
+            freq = 0.07
             
-            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, data, 0.0, msg_global_pose, 0.0)
-            mp.measurements.append(m)
-            index += 1
-        else:
-            if "sonar" in meas_type and "landmark" not in meas_type:
+            data = num_msgs + freq
+        elif meas_type == "depth":
+            bin_per_meter = 255 / -10.0
+            data = data_bin / bin_per_meter
+        elif meas_type in ["sonar_x", "sonar_y"]:
+            bin_per_meter = 255 / 40.0
+            data = data_bin / bin_per_meter - 20.0
+            if "landmark" not in measured_agent: # Sonar measurements between agents have global_pose as empty list
                 msg_global_pose = []
-            m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, 0.0, 0.0, msg_global_pose, 0.0)
-            mp.measurements.append(m)
+        elif meas_type == "modem_range":
+            bin_per_meter = 255 / 30.0
+            data = data_bin / bin_per_meter
+        elif meas_type == "modem_azimuth":
+            bin_per_meter = 255 / 360.0
+            data = data_bin / bin_per_meter
+            data = np.mod( data + 180, 360) - 180 # -180 to 180
+        
+        m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, data, 0.0, msg_global_pose, 0.0)
+        mp.measurements.append(m)
+        index += 1
+        # else:
+        #     if "sonar" in meas_type and "landmark" not in meas_type:
+        #         msg_global_pose = []
+        #     m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, 0.0, 0.0, msg_global_pose, 0.0)
+        #     mp.measurements.append(m)
 
     return mp
 
@@ -197,26 +216,17 @@ MEASUREMENTS_WITH_AGENTS = ["sonar", "modem"]
 
 HEADERS = {
     'empty' : 0,
-    'depth' : 1,
-    'depth_bookstart' : 2,
-    'depth_bookend' : 3,
-    'sonar_x' : 4,
-    'sonar_x_bookstart' : 5,
-    'sonar_x_bookend' : 6,
-    'sonar_y' : 7,
-    'sonar_y_bookstart' : 8,
-    'sonar_y_bookend' : 9,
-    'sonar_z' : 10,
-    'sonar_z_bookstart' : 11,
-    "sonar_z_bookend" : 12,
-    'modem_range' : 13,
-    'modem_azimuth' : 14,
-    'final_time' : 15
+    'sonar_x_burst' : 1,
+    'sonar_x' : 2,
+    'sonar_y_burst' : 3,
+    'sonar_y' : 4,
+    'modem_range' : 5,
+    'modem_azimuth' : 6,
 }
 
 # Configure which delta multipliers are allowed
-# delta_multiplier_options = list(np.arange(0,11,1))
-delta_multiplier_options = [0,1,3,5,7,10,13,15,17,20]
+delta_multiplier_options = list(np.arange(0,11,1))
+# delta_multiplier_options = [0,1,10,20,50]
 
 if __name__ == "__main__":
     # Create measurement package
@@ -224,8 +234,8 @@ if __name__ == "__main__":
 
     global_pose = [1,2,3,4]
 
-    asset_landmark_dict = {"bluerov2_3" : 0, 
-        "bluerov2_4" : 1, "landmark_pole1" :2, "surface" : 4
+    asset_landmark_dict = {"dory" : 0, 
+        "guppy" : 2, "surface" : 3
     }
 
     print('############ TEST 1 #################')
@@ -234,16 +244,14 @@ if __name__ == "__main__":
     mp.src_asset = "surface"
     mp.delta_multiplier = 1.0
     t = rospy.get_rostime()
-    m = Measurement("modem_range", t, mp.src_asset, "bluerov2_3", 3.65, 0.5, global_pose)
-    m2 = Measurement("modem_azimuth", t, mp.src_asset, "bluerov2_3", -65.72, 0.5, global_pose)
-    m3 = Measurement("modem_range", t, mp.src_asset, "bluerov2_4", 7.8, 0.5, global_pose)
-    m4 = Measurement("modem_azimuth", t, mp.src_asset, "bluerov2_4", 23.0, 0.5, global_pose)
-    m5 = Measurement("final_time", rospy.get_rostime(), "", "", 0, 0, [])
+    m = Measurement("modem_range", t, mp.src_asset, "dory", 3.65, 0.5, global_pose, 0.0)
+    m2 = Measurement("modem_azimuth", t, mp.src_asset, "dory", -65.72, 0.5, global_pose, 0.0)
+    m3 = Measurement("modem_range", t, mp.src_asset, "guppy", 7.8, 0.5, global_pose, 0.0)
+    m4 = Measurement("modem_azimuth", t, mp.src_asset, "guppy", 23.0, 0.5, global_pose, 0.0)
     mp.measurements.append(m)
     mp.measurements.append(m2)
     mp.measurements.append(m3)
     mp.measurements.append(m4)
-    mp.measurements.append(m5)
 
     
     num_bytes_buffer = 29
@@ -254,26 +262,25 @@ if __name__ == "__main__":
 
     print('############ TEST 2 #################')
     mp = MeasurementPackage()
-    mp.src_asset = "bluerov2_3"
+    mp.src_asset = "dory"
     mp.delta_multiplier = 5.0
 
     t = rospy.get_rostime()
-    m = Measurement("sonar_x", t, mp.src_asset, "bluerov2_4", 2.1, 0.5, [])
-    m2 = Measurement("sonar_y", t, mp.src_asset, "bluerov2_4", -6.5, 0.5, [])
-    m3 = Measurement("depth", t, mp.src_asset, "", -3, 0.5, [])
-    m4 = Measurement("sonar_x_bookend", rospy.get_rostime(), mp.src_asset, "bluerov2_4", 0.0, 0.5, [])
-    m5 = Measurement("depth_bookend", rospy.get_rostime(), mp.src_asset, "", 0.0, 0.5, [])
-    m6 = Measurement("sonar_y_bookstart", rospy.get_rostime(), mp.src_asset, "landmark_pole1", 0.0, 0.5, [])
-    time.sleep(1)
-    m7 = Measurement("final_time", rospy.get_rostime(), "", "", 0, 0, [])
+    m = Measurement("sonar_x_burst", t, mp.src_asset, "guppy", 5.24, 0.5, [], 1)
+    m1 = Measurement("sonar_x", t, mp.src_asset, "guppy", 2.1, 0.5, [], 1)
+    m2 = Measurement("sonar_y_burst", t, mp.src_asset, "guppy", 6.3, 0.5, [], 1)
+    m3 = Measurement("sonar_y", t, mp.src_asset, "guppy", -6.5, 0.5, [], 1)
+    rospy.sleep(2)
+    t = rospy.get_rostime()
+    m4 = Measurement("sonar_x", t, mp.src_asset, "guppy", 2.1, 0.5, [], 1)
+    m5 = Measurement("sonar_y", t, mp.src_asset, "guppy", -6.5, 0.5, [], 1)
 
     mp.measurements.append(m)
+    mp.measurements.append(m1)
     mp.measurements.append(m2)
     mp.measurements.append(m3)
     mp.measurements.append(m4)
     mp.measurements.append(m5)
-    mp.measurements.append(m6)
-    mp.measurements.append(m7)
     print(mp)
     bytes_ = measPkg2Bytes(mp, asset_landmark_dict, num_bytes_buffer)
     mp_return = bytes2MeasPkg(bytes_, 2, asset_landmark_dict, global_pose)

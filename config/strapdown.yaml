@@ -1,26 +1,26 @@
 process_noise:
   ownship:
-    x: 0.0
-    y: 0.0
-    z: 0.0
+    x: 0.01
+    y: 0.01
+    z: 0.01
     quat: 0.001 # Scaled by 100 in the code
     yaw: 0.01
-    x_vel: 0.0001
-    y_vel: 0.0001
-    z_vel: 0.0001
-    yaw_vel: 0.001
+    x_vel: 0.001
+    y_vel: 0.001
+    z_vel: 0.001
+    yaw_vel: 0.01
     accel_bias: 0.0001 # m/s^3/sqrt(Hz), scaled by 3 in code
     gyro_bias: 0.000001 # m/s^3/sqrt(Hz), scaled by 7 in code
 initial_uncertainty:
   ownship:
-    x: 0.01
-    y: 0.01
-    z: 0.01
+    x: 0.5
+    y: 0.5
+    z: 0.5
     quat: 1.0
     yaw: 0.3
     bias: 1.0
-    x_vel: 0.01
-    y_vel: 0.01
-    z_vel: 0.01
+    x_vel: 0.1
+    y_vel: 0.1
+    z_vel: 0.1
     yaw_vel: 0.1
     

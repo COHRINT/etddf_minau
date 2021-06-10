@@ -2,18 +2,18 @@ update_rate: 1
 
 ## Multipliers for Delta tiers
 ## increases a measurements threshold to be added to the buffer by the given amount
-delta_tiers: [1]
+delta_tiers: [1,2,3,4,5,6,7,8,9,10]
 
 ## Measurement topics
 measurement_topics:
   depth: baro
-  imu_ci: None #strapdown/intersection # None to not intersect
-  imu_est: strapdown/estimate
+  imu_ci: strapdown/intersection # None to not send result back to strapdown
+  imu_est: strapdown/estimate # To disable, set strapdown to False in launch file
   sonar: "sonar_processing/target_list/" # "sonar_processing/target_list/associated" # "sonar_processing/target_list/"
 
 ### Buffer space configurations ###
 buffer_space:
-  capacity: 2000 # Total capacity
+  capacity: 31 # Total capacity
   burst: 3
 
 use_control_input: False
@@ -37,18 +37,18 @@ process_noise:
     y_vel: 0.05
     z_vel: 0.05
   blueteam:
-    x: 0.2
-    y: 0.2
+    x: 0.0
+    y: 0.0
     z: 0
-    x_vel: 0.05
-    y_vel: 0.05
+    x_vel: 0.015
+    y_vel: 0.015
     z_vel: 0
   redteam:
-    x: 0.2
-    y: 0.2
+    x: 0.0
+    y: 0.0
     z: 0
-    x_vel: 0.05
-    y_vel: 0.05
+    x_vel: 0.01
+    y_vel: 0.01
     z_vel: 0
 
 ### Initial Uncertainty Configurations ###
