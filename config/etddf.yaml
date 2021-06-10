@@ -13,7 +13,7 @@ measurement_topics:
 
 ### Buffer space configurations ###
 buffer_space:
-  capacity: 31 # Total capacity
+  capacity: 29 # Total capacity
   burst: 3
 
 use_control_input: False
