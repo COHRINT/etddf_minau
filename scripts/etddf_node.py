@@ -123,16 +123,20 @@ class ETDDF_Node:
         
         if rospy.get_param("~strapdown"):
             rospy.Subscriber(rospy.get_param("~measurement_topics/imu_est"), Odometry, self.orientation_estimate_callback, queue_size=1)
+            rospy.Subscriber(rospy.get_param("~measurement_topics/imu_est"), Odometry, self.nav_filter_callback, queue_size=1)
             rospy.wait_for_message(rospy.get_param("~measurement_topics/imu_est"), Odometry)
-
-        # IMU Covariance Intersection
-        if rospy.get_param("~strapdown") and rospy.get_param("~measurement_topics/imu_ci") != "None":
-            self.cuprint("Intersecting with strapdown")
-            self.intersection_pub = rospy.Publisher("strapdown/intersection_result", PositionVelocity, queue_size=1)
-            rospy.Subscriber(rospy.get_param("~measurement_topics/imu_ci"), PositionVelocity, self.nav_filter_callback, queue_size=1)
         else:
             self.cuprint("Not intersecting with strapdown filter")
             rospy.Timer(rospy.Duration(1 / self.update_rate), self.no_nav_filter_callback)
+
+        # IMU Covariance Intersection
+        # if rospy.get_param("~strapdown") and rospy.get_param("~measurement_topics/imu_ci") != "None":
+        #     self.cuprint("Intersecting with strapdown")
+        #     self.intersection_pub = rospy.Publisher("strapdown/intersection_result", PositionVelocity, queue_size=1)
+        #     rospy.Subscriber(rospy.get_param("~measurement_topics/imu_ci"), PositionVelocity, self.nav_filter_callback, queue_size=1)
+        # else:
+        #     self.cuprint("Not intersecting with strapdown filter")
+        #     rospy.Timer(rospy.Duration(1 / self.update_rate), self.no_nav_filter_callback)
 
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
@@ -161,6 +165,7 @@ class ETDDF_Node:
         self.meas_lock.release()
 
     def sonar_callback(self, sonar_list):
+        self.cuprint("Receiving sonar meas!!")
         self.update_lock.acquire()
         for target in sonar_list.targets:
             # self.cuprint("Receiving sonar measurements")
@@ -200,7 +205,7 @@ class ETDDF_Node:
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
             # self.filter.add_meas(sonar_z)
-            # self.cuprint("meas added")
+        self.cuprint("sonar meas added")
         self.update_lock.release()
 
     def no_nav_filter_callback(self, event):
@@ -217,7 +222,7 @@ class ETDDF_Node:
         self.update_seq += 1
         self.update_lock.release()
 
-    def nav_filter_callback(self, pv_msg):
+    def nav_filter_callback(self, odom):
         # Update at specified rate
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
@@ -230,9 +235,13 @@ class ETDDF_Node:
         Q = self.Q
 
         # Turn odom estimate into numpy
-        mean = np.array([[pv_msg.position.x, pv_msg.position.y, pv_msg.position.z, \
-                        pv_msg.velocity.x, pv_msg.velocity.y, pv_msg.velocity.z]]).T
-        cov = np.array(pv_msg.covariance).reshape(6,6)
+        mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
+                        odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
+        cov = np.eye(6)
+        pose_cov = np.array(odom.pose.covariance).reshape(6,6)
+        twist_cov = np.array(odom.twist.covariance).reshape(6,6)
+        cov[:3,:3] = pose_cov[:3,:3]
+        cov[3:,3:] = twist_cov[:3,:3]
 
         c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov)
 
@@ -241,7 +250,7 @@ class ETDDF_Node:
             velocity = Vector3(c_bar[3,0], c_bar[4,0], c_bar[5,0])
             covariance = list(Pcc.flatten())
             new_pv_msg = PositionVelocity(position, velocity, covariance)
-            self.intersection_pub.publish(new_pv_msg)
+            # self.intersection_pub.publish(new_pv_msg)
 
         self.publish_estimates(t_now)
         self.last_update_time = t_now
@@ -296,8 +305,8 @@ class ETDDF_Node:
                 tw = Twist(Vector3(mean[3],mean[4],mean[5]), Vector3(0,0,0))
                 twist_cov[3:, 3:] = np.eye(3) * -1
             twc = TwistWithCovariance(tw, list(twist_cov.flatten()))
-            h = Header(self.update_seq, timestamp, "map")
-            o = Odometry(h, "map", pwc, twc)
+            h = Header(self.update_seq, timestamp, "odom")
+            o = Odometry(h, "odom", pwc, twc)
 
             ae = AssetEstimate(o, asset)
             ne.assets.append(ae)
