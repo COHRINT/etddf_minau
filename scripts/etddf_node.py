@@ -116,7 +116,7 @@ class ETDDF_Node:
             self.control_input = None
             rospy.Subscriber("uuv_control/control_status", ControlStatus, self.control_status_callback, queue_size=1)
 
-        if rospy.get_param("~strapdown_topic") != None:
+        if rospy.get_param("~strapdown_topic") != "None":
             self.cuprint("Intersecting with strapdown")
             rospy.Subscriber( rospy.get_param("~strapdown_topic"), Odometry, self.nav_filter_callback, queue_size=1)
             # Set up publisher for correcting the odom estimate
@@ -312,8 +312,8 @@ class ETDDF_Node:
                 tw = Twist(Vector3(mean[3],mean[4],mean[5]), Vector3(0,0,0))
                 twist_cov[3:, 3:] = np.eye(3) * -1
             twc = TwistWithCovariance(tw, list(twist_cov.flatten()))
-            h = Header(self.update_seq, timestamp, "odom")
-            o = Odometry(h, "odom", pwc, twc)
+            h = Header(self.update_seq, timestamp, "map")
+            o = Odometry(h, "map", pwc, twc)
 
             ae = AssetEstimate(o, asset)
             ne.assets.append(ae)
