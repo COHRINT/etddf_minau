@@ -7,9 +7,9 @@ delta_tiers: [1,2,3,4,5,6,7,8,9,10]
 ## Measurement topics
 measurement_topics:
   depth: baro
-  imu_ci: strapdown/intersection # None to not send result back to strapdown
-  imu_est: strapdown/estimate # To disable, set strapdown to False in launch file
-  sonar: "sonar_processing/target_list/" # "sonar_processing/target_list/associated" # "sonar_processing/target_list/"
+  sonar: None #"sonar_processing/target_list/" # "sonar_processing/target_list/associated" # "sonar_processing/target_list/"
+
+strapdown_topic: odometry/filtered/odom # To disable, set to None
 
 ### Buffer space configurations ###
 buffer_space:

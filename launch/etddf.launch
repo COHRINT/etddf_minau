@@ -2,11 +2,8 @@
     <arg name="my_name" default="bluerov2_3" />
     <arg name="blue_team_names" default="[]" />
     <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_sim.yaml" />
-    <arg name="strapdown" default="True" />
-    <arg name="launch_strapdown" default="True" />
-    <arg name="sonar" default="True" />
-    <!-- <arg name="simple_sharing" default="True" /> -->
-    <arg name="simple_sharing" default="False" />
+    <arg name="simple_sharing" default="True" />
+    <!-- <arg name="simple_sharing" default="False" /> -->
 
     <!-- not required, list of lists, index of outer 
     list corresponds to index in blue_team_names -->
@@ -14,10 +11,7 @@
 
     <arg name="red_team_names" default="[]" />
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
-    <arg name="strapdown_config_file" default="$(find etddf_minau)/config/strapdown.yaml" />
     <arg name="starting_position_enu" default="[0,0,0]" /> <!-- [x,y,z] -->
-    <arg name="starting_yaw_enu" default="0.0" />
-    <arg name="wait_on_startup" default="3.0" />
     
     <node name="etddf" pkg="etddf_minau" type="etddf_node.py" output="screen">
         <param name="my_name" value="$(arg my_name)" />
@@ -28,16 +22,7 @@
         <rosparam command="load" file="$(arg config_file)" />        
         <rosparam command="load" file="$(find etddf_minau)/config/measurements.yaml" />
         <rosparam command="load" file="$(arg landmark_file)" />
-        <param name="strapdown" value="$(arg strapdown)" />
         <param name="simple_sharing" value="$(arg simple_sharing)" />
-    </node>
-
-    <!-- Launch the strapdown filter -->
-    <node name="strapdown" pkg="etddf_minau" type="strapdown.py" output="screen" if="$(arg launch_strapdown)">
-        <rosparam command="load" file="$(arg strapdown_config_file)" />
-        <rosparam param="starting_position" subst_value="True">$(arg starting_position_enu)</rosparam> 
-        <param name="starting_yaw" value="$(arg starting_yaw_enu)" />
-        <param name="wait_on_startup" value="$(arg wait_on_startup)" />
     </node>
 
     <!-- Launch the association node -->

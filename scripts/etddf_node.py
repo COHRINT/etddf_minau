@@ -37,19 +37,22 @@ NUM_OWNSHIP_STATES = 6
 
 class ETDDF_Node:
 
-    def __init__(self, my_name, \
+    def __init__(self, 
+                my_name, \
                 update_rate, \
                 delta_tiers, \
                 asset2id, \
                 delta_codebook_table, \
                 buffer_size, \
                 meas_space_table, \
-                missed_meas_tolerance_table, \
                 x0,\
                 P0,\
                 Q,\
                 default_meas_variance,
                 use_control_input):
+
+        self.odom2map_tf = x0[:3]
+        self.br = tf.TransformBroadcaster()
 
         self.update_rate = update_rate
         self.asset2id = asset2id
@@ -58,7 +61,6 @@ class ETDDF_Node:
         self.default_meas_variance = default_meas_variance
         self.my_name = my_name
         self.landmark_dict = rospy.get_param("~landmarks", {})
-        self.data_x, self.data_y = None, None
 
         self.cuprint = CUPrint(rospy.get_name())
         
@@ -105,12 +107,6 @@ class ETDDF_Node:
         self.last_orientation = None
         self.red_asset_found = False
         self.red_asset_names = rospy.get_param("~red_team_names")
-        # self.meas_cnt_implicit = 0
-        # self.meas_cnt_explicit = 0
-
-        # Depth Sensor
-        # if rospy.get_param("~measurement_topics/depth") != "None":
-        #     rospy.Subscriber(rospy.get_param("~measurement_topics/depth"), Float64, self.depth_callback, queue_size=1)
 
         # Modem & Measurement Packages
         rospy.Subscriber("etddf/packages_in", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
@@ -120,44 +116,31 @@ class ETDDF_Node:
             self.control_input = None
             rospy.Subscriber("uuv_control/control_status", ControlStatus, self.control_status_callback, queue_size=1)
 
-        
-        if rospy.get_param("~strapdown"):
-            rospy.Subscriber(rospy.get_param("~measurement_topics/imu_est"), Odometry, self.orientation_estimate_callback, queue_size=1)
-            rospy.wait_for_message(rospy.get_param("~measurement_topics/imu_est"), Odometry)
-
-        # IMU Covariance Intersection
-        if rospy.get_param("~strapdown") and rospy.get_param("~measurement_topics/imu_ci") != "None":
+        if rospy.get_param("~strapdown_topic") != None:
             self.cuprint("Intersecting with strapdown")
-            self.intersection_pub = rospy.Publisher("strapdown/intersection_result", PositionVelocity, queue_size=1)
-            rospy.Subscriber(rospy.get_param("~measurement_topics/imu_ci"), PositionVelocity, self.nav_filter_callback, queue_size=1)
+            rospy.Subscriber( rospy.get_param("~strapdown_topic"), Odometry, self.nav_filter_callback, queue_size=1)
+            # Set up publisher for correcting the odom estimate
+            self.intersection_pub = rospy.Publisher("set_pose", PoseWithCovarianceStamped, queue_size=1)
+            rospy.wait_for_message( rospy.get_param("~strapdown_topic"), Odometry)
         else:
             self.cuprint("Not intersecting with strapdown filter")
             rospy.Timer(rospy.Duration(1 / self.update_rate), self.no_nav_filter_callback)
-
+            
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
             self.cuprint("Subscribing to sonar")
             rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
         
-        # rospy.Subscriber("pose_gt", Odometry, self.gps_callback, queue_size=1)
-    
         # Initialize Buffer Service
         rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
-        self.meas_pub_implicit = rospy.Publisher("etddf/implicit_cnt", Int64, queue_size=10)
-        self.meas_pub_explicit = rospy.Publisher("etddf/explicit_cnt", Int64, queue_size=10)
-        self.cuprint("loaded")
+        # Wait for our first strapdown msg
 
-    def gps_callback(self, msg):
-        self.data_x = msg.pose.pose.position.x + np.random.normal(0, scale=0.05)
-        self.data_y = msg.pose.pose.position.y + np.random.normal(0, scale=0.05)
+        self.cuprint("loaded")
 
     def orientation_estimate_callback(self, odom):
         self.meas_lock.acquire()
-        self.last_orientation = odom.pose.pose.orientation
-        self.last_orientation_cov = np.array(odom.pose.covariance).reshape(6,6)
-        self.last_orientation_dot = odom.twist.twist.angular
-        self.last_orientation_dot_cov = np.array(odom.twist.covariance).reshape(6,6)
+        
         self.meas_lock.release()
 
     def sonar_callback(self, sonar_list):
@@ -217,12 +200,18 @@ class ETDDF_Node:
         self.update_seq += 1
         self.update_lock.release()
 
-    def nav_filter_callback(self, pv_msg):
+    def nav_filter_callback(self, odom):
         # Update at specified rate
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
         if delta_t_ros < rospy.Duration(1/self.update_rate):
             return
+
+        # Update orientation
+        self.last_orientation = odom.pose.pose.orientation
+        self.last_orientation_cov = np.array(odom.pose.covariance).reshape(6,6)
+        self.last_orientation_dot = odom.twist.twist.angular
+        self.last_orientation_dot_cov = np.array(odom.twist.covariance).reshape(6,6)
 
         self.update_lock.acquire()
 
@@ -230,18 +219,44 @@ class ETDDF_Node:
         Q = self.Q
 
         # Turn odom estimate into numpy
-        mean = np.array([[pv_msg.position.x, pv_msg.position.y, pv_msg.position.z, \
-                        pv_msg.velocity.x, pv_msg.velocity.y, pv_msg.velocity.z]]).T
-        cov = np.array(pv_msg.covariance).reshape(6,6)
+        mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
+                        odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
+        # Transform mean to map frame
+        transform = np.array([[self.odom2map_tf[0,0],self.odom2map_tf[1,0],self.odom2map_tf[2,0], 0,0,0]]).T
+        mean += transform
+        cov_pose = np.array(odom.pose.covariance).reshape(6,6)
+        cov_twist = np.array(odom.twist.covariance).reshape(6,6)
+        cov = np.zeros((6,6))
+        cov[:3,:3] = cov_pose[:3,:3]
+        cov[3:,3:] = cov_twist[:3,:3]
 
-        c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov)
+        # c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
+        c_bar, Pcc = None
 
         if c_bar is not None and Pcc is not None:
-            position = Vector3(c_bar[0,0], c_bar[1,0], c_bar[2,0])
-            velocity = Vector3(c_bar[3,0], c_bar[4,0], c_bar[5,0])
-            covariance = list(Pcc.flatten())
-            new_pv_msg = PositionVelocity(position, velocity, covariance)
-            self.intersection_pub.publish(new_pv_msg)
+            # Correct the odom estimate
+            # msg = PoseWithCovarianceStamped()
+            # msg.header = odom.header
+
+            # Transform
+            # mean -= transform
+            # msg.pose.pose.position.x = mean[0,0]
+            # msg.pose.pose.position.y = mean[1,0]
+            # msg.pose.pose.position.z = mean[2,0]
+            # new_cov = np.zeros((6,6))
+            # new_cov[:3,:3] = cov[:3,:3]
+            # new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
+
+            #TODO finish
+            
+            # msg.pose.covariance = list(cov[:3,:3].flatten())
+
+            # position = Vector3(c_bar[0,0], c_bar[1,0], c_bar[2,0])
+            # velocity = Vector3(c_bar[3,0], c_bar[4,0], c_bar[5,0])
+            # covariance = list(Pcc.flatten())
+            # new_pv_msg = PositionVelocity(position, velocity, covariance)
+            # self.intersection_pub.publish(new_pv_msg)
+            pass
 
         self.publish_estimates(t_now)
         self.last_update_time = t_now
@@ -304,6 +319,14 @@ class ETDDF_Node:
             self.asset_pub_dict[asset].publish(o)
 
         self.network_pub.publish(ne)
+
+        # Publish transform
+        self.br.sendTransform(
+            self.odom2map_tf,
+            (0,0,0,1),
+            timestamp,
+            "map",
+            "odom")
 
     def meas_pkg_callback(self, msg):
         self.update_lock.acquire()
@@ -392,15 +415,6 @@ def get_delta_codebook_table():
         base_et_delta = meas_info[meas]["base_et_delta"]
         delta_codebook[meas] = base_et_delta
     return delta_codebook
-
-def get_missed_meas_tolerance_table():
-    meas_tolerance_table = {}
-
-    meas_info = rospy.get_param("~measurements")
-    for meas in meas_info.keys():
-        meas_tolerance_table[meas] = meas_info[meas]["missed_tolerance"]
-
-    return meas_tolerance_table
 
 def get_meas_space_table():
     meas_space_table = {}
@@ -536,7 +550,6 @@ if __name__ == "__main__":
     delta_codebook_table = get_delta_codebook_table()
     buffer_size = rospy.get_param("~buffer_space/capacity")
     meas_space_table = get_meas_space_table()
-    missed_meas_tolerance_table = get_missed_meas_tolerance_table()
     if my_name != "surface":
         num_assets = len(asset2id) - 1 # subtract surface
     else:
@@ -554,7 +567,6 @@ if __name__ == "__main__":
                         delta_codebook_table, \
                         buffer_size, \
                         meas_space_table, \
-                        missed_meas_tolerance_table, \
                         x0,\
                         P0,\
                         Q,\
