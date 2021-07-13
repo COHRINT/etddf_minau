@@ -231,33 +231,29 @@ class ETDDF_Node:
         cov[:3,:3] = cov_pose[:3,:3]
         cov[3:,3:] = cov_twist[:3,:3]
 
-        # c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
-        c_bar, Pcc = None
+        c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
+        c_bar, Pcc = None, None
+        # print(self.update_seq)
 
-        if c_bar is not None and Pcc is not None:
+        if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
             # Correct the odom estimate
-            # msg = PoseWithCovarianceStamped()
-            # msg.header = odom.header
+            msg = PoseWithCovarianceStamped()
+            msg.header = odom.header
+            msg.header.frame_id = "odom"
 
             # Transform
-            # mean -= transform
-            # msg.pose.pose.position.x = mean[0,0]
-            # msg.pose.pose.position.y = mean[1,0]
-            # msg.pose.pose.position.z = mean[2,0]
-            # new_cov = np.zeros((6,6))
-            # new_cov[:3,:3] = cov[:3,:3]
-            # new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
+            mean -= transform
+            msg.pose.pose.position.x = c_bar[0,0]
+            msg.pose.pose.position.y = c_bar[1,0]
+            msg.pose.pose.position.z = c_bar[2,0]
+            msg.pose.pose.orientation = self.last_orientation
+            new_cov = np.zeros((6,6))
+            new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
+            new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
 
             #TODO finish
-            
-            # msg.pose.covariance = list(cov[:3,:3].flatten())
-
-            # position = Vector3(c_bar[0,0], c_bar[1,0], c_bar[2,0])
-            # velocity = Vector3(c_bar[3,0], c_bar[4,0], c_bar[5,0])
-            # covariance = list(Pcc.flatten())
-            # new_pv_msg = PositionVelocity(position, velocity, covariance)
-            # self.intersection_pub.publish(new_pv_msg)
-            pass
+            msg.pose.covariance = list(new_cov.flatten())
+            self.intersection_pub.publish( msg )
 
         self.publish_estimates(t_now)
         self.last_update_time = t_now

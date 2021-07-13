@@ -6,9 +6,9 @@ delta_tiers: [1,2,3,4,5,6,7,8,9,10]
 
 ## Measurement topics
 measurement_topics:
-  sonar: "sonar_processing/target_list/associated"
+  sonar: None #"sonar_processing/target_list/associated"
 
-strapdown_topic: None #odometry/filtered/odom # To disable, set to None
+strapdown_topic: odometry/filtered/odom # To disable, set to None
 
 ### Buffer space configurations ###
 buffer_space:
@@ -29,44 +29,44 @@ default_starting_position:
 ### Process Noise Configurations ###
 process_noise:
   ownship:
-    x: 0.0
-    y: 0.0
-    z: 0
-    x_vel: 0.05
-    y_vel: 0.05
-    z_vel: 0.05
-  blueteam:
-    x: 0.0
-    y: 0.0
-    z: 0
-    x_vel: 0.015
-    y_vel: 0.015
-    z_vel: 0
-  redteam:
-    x: 0.0
-    y: 0.0
+    x: 0.1
+    y: 0.1
     z: 0
     x_vel: 0.01
     y_vel: 0.01
-    z_vel: 0
+    z_vel: 0.01
+  blueteam:
+    x: 0.1
+    y: 0.1
+    z: 0
+    x_vel: 0.1
+    y_vel: 0.1
+    z_vel: 0.1
+  redteam:
+    x: 0.5
+    y: 0.5
+    z: 0
+    x_vel: 0.1
+    y_vel: 0.1
+    z_vel: 0.1
 
 ### Initial Uncertainty Configurations ###
 initial_uncertainty:
   ownship:
-    x: 0.01
-    y: 0.01
+    x: 1.0
+    y: 1.0
     z: 0.1
-    x_vel: 0.01
-    y_vel: 0.01
-    z_vel: 0.05
+    x_vel: 0.1
+    y_vel: 0.1
+    z_vel: 0.1
   # for asset positions provided to us through roslaunch params
   known_starting_position: 
-    x: 0.01
-    y: 0.01
-    z: 0.00001
-    x_vel: 0.001
-    y_vel: 0.001
-    z_vel: 0.00001
+    x: 1.0
+    y: 1.0
+    z: 0.1
+    x_vel: 0.1
+    y_vel: 0.1
+    z_vel: 0.1
   # asset positions not provided in roslaunch, including redteam
   unknown_starting_position: 
     x: 1000
