@@ -144,6 +144,7 @@ class ETDDF_Node:
         self.meas_lock.release()
 
     def sonar_callback(self, sonar_list):
+        self.cuprint("Receiving sonar meas!!")
         self.update_lock.acquire()
         for target in sonar_list.targets:
             # self.cuprint("Receiving sonar measurements")
@@ -183,7 +184,7 @@ class ETDDF_Node:
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
             # self.filter.add_meas(sonar_z)
-            # self.cuprint("meas added")
+        self.cuprint("sonar meas added")
         self.update_lock.release()
 
     def no_nav_filter_callback(self, event):
@@ -311,8 +312,8 @@ class ETDDF_Node:
                 tw = Twist(Vector3(mean[3],mean[4],mean[5]), Vector3(0,0,0))
                 twist_cov[3:, 3:] = np.eye(3) * -1
             twc = TwistWithCovariance(tw, list(twist_cov.flatten()))
-            h = Header(self.update_seq, timestamp, "map")
-            o = Odometry(h, "map", pwc, twc)
+            h = Header(self.update_seq, timestamp, "odom")
+            o = Odometry(h, "odom", pwc, twc)
 
             ae = AssetEstimate(o, asset)
             ne.assets.append(ae)
