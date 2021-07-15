@@ -6,7 +6,7 @@ delta_tiers: [1,2,3,4,5,6,7,8,9,10]
 
 ## Measurement topics
 measurement_topics:
-  sonar: None #"sonar_processing/target_list/associated"
+  sonar: "sonar_processing/target_list/associated"
 
 strapdown_topic: odometry/filtered/odom # To disable, set to None
 
@@ -39,16 +39,16 @@ process_noise:
     x: 0.1
     y: 0.1
     z: 0
-    x_vel: 0.1
-    y_vel: 0.1
-    z_vel: 0.1
+    x_vel: 0.01
+    y_vel: 0.01
+    z_vel: 0.01
   redteam:
-    x: 0.5
-    y: 0.5
+    x: 0.1
+    y: 0.1
     z: 0
-    x_vel: 0.1
-    y_vel: 0.1
-    z_vel: 0.1
+    x_vel: 0.01
+    y_vel: 0.01
+    z_vel: 0.01
 
 ### Initial Uncertainty Configurations ###
 initial_uncertainty:

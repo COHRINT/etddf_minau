@@ -13,7 +13,7 @@ from etddf.most_recent import MostRecent
 import rospy
 import threading
 from minau.msg import ControlStatus
-from etddf_minau.msg import Measurement, MeasurementPackage, NetworkEstimate, AssetEstimate, PositionVelocity
+from etddf_minau.msg import Measurement, MeasurementPackage, NetworkEstimate, AssetEstimate
 from etddf_minau.srv import GetMeasurementPackage
 import numpy as np
 import tf
@@ -51,8 +51,7 @@ class ETDDF_Node:
                 default_meas_variance,
                 use_control_input):
 
-        self.odom2map_tf = x0[:3]
-        self.br = tf.TransformBroadcaster()
+        # self.br = tf.TransformBroadcaster()
 
         self.update_rate = update_rate
         self.asset2id = asset2id
@@ -94,7 +93,7 @@ class ETDDF_Node:
 
         self.asset_pub_dict = {}
         for asset in self.asset2id.keys():
-            if "surface" in asset:
+            if "topside" in asset:
                 continue
             self.asset_pub_dict[asset] = rospy.Publisher("etddf/estimate/" + asset, Odometry, queue_size=10)        
 
@@ -170,20 +169,22 @@ class ETDDF_Node:
 
             now = rospy.get_rostime()
             sonar_x, sonar_y = None, None
+
             if "landmark_" in target.id:
                 sonar_x = Measurement("sonar_x", now, self.my_name, "", x, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]], -1.0)
                 sonar_y = Measurement("sonar_y", now, self.my_name, "", y, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]], -1.0)
             else:
                 sonar_x = Measurement("sonar_x", now, self.my_name, target.id, x, self.default_meas_variance["sonar_x"], [], -1.0)
                 sonar_y = Measurement("sonar_y", now, self.my_name, target.id, y, self.default_meas_variance["sonar_y"], [], -1.0)
+
                 if target.id in self.red_asset_names and not self.red_asset_found:
                     self.cuprint("Red Asset detected!")
                     self.red_asset_found = True
-            sonar_z = Measurement("sonar_z", now, self.my_name, target.id, z, self.default_meas_variance["sonar_z"], [], -1.0)
+            sonar_z = Measurement("sonar_z", now, self.my_name, target.id, 0, self.default_meas_variance["sonar_z"], [], -1.0)
 
             self.filter.add_meas(sonar_x)
             self.filter.add_meas(sonar_y)
-            # self.filter.add_meas(sonar_z)
+            self.filter.add_meas(sonar_z)
         self.cuprint("sonar meas added")
         self.update_lock.release()
 
@@ -222,38 +223,33 @@ class ETDDF_Node:
         # Turn odom estimate into numpy
         mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
                         odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
-        # Transform mean to map frame
-        transform = np.array([[self.odom2map_tf[0,0],self.odom2map_tf[1,0],self.odom2map_tf[2,0], 0,0,0]]).T
-        mean += transform
         cov_pose = np.array(odom.pose.covariance).reshape(6,6)
         cov_twist = np.array(odom.twist.covariance).reshape(6,6)
         cov = np.zeros((6,6))
-        cov[:3,:3] = cov_pose[:3,:3]
-        cov[3:,3:] = cov_twist[:3,:3]
+        cov[:3,:3] = cov_pose[:3,:3] #+ np.eye(3) * 4 #sim
+        cov[3:,3:] = cov_twist[:3,:3] #+ np.eye(3) * 0.1 #sim
 
         c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
-        c_bar, Pcc = None, None
-        # print(self.update_seq)
 
         if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
             # Correct the odom estimate
-            msg = PoseWithCovarianceStamped()
-            msg.header = odom.header
-            msg.header.frame_id = "odom"
+            # msg = PoseWithCovarianceStamped()
+            # msg.header = odom.header
+            # msg.header.frame_id = "odom"
 
-            # Transform
-            mean -= transform
-            msg.pose.pose.position.x = c_bar[0,0]
-            msg.pose.pose.position.y = c_bar[1,0]
-            msg.pose.pose.position.z = c_bar[2,0]
-            msg.pose.pose.orientation = self.last_orientation
-            new_cov = np.zeros((6,6))
-            new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
-            new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
+            # # Transform
+            # mean -= transform
+            # msg.pose.pose.position.x = c_bar[0,0]
+            # msg.pose.pose.position.y = c_bar[1,0]
+            # msg.pose.pose.position.z = c_bar[2,0]
+            # msg.pose.pose.orientation = self.last_orientation
+            # new_cov = np.zeros((6,6))
+            # new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
+            # new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
 
-            #TODO finish
-            msg.pose.covariance = list(new_cov.flatten())
-            self.intersection_pub.publish( msg )
+            # msg.pose.covariance = list(new_cov.flatten())
+            # self.intersection_pub.publish( msg )
+            pass
 
         self.publish_estimates(t_now)
         self.last_update_time = t_now
@@ -277,7 +273,7 @@ class ETDDF_Node:
     def publish_estimates(self, timestamp):
         ne = NetworkEstimate()
         for asset in self.asset2id.keys():
-            if "surface" in asset:
+            if "topside" in asset:
                 continue
             if "red" in asset and not self.red_asset_found:
                 continue
@@ -318,18 +314,18 @@ class ETDDF_Node:
         self.network_pub.publish(ne)
 
         # Publish transform
-        self.br.sendTransform(
-            self.odom2map_tf,
-            (0,0,0,1),
-            timestamp,
-            "map",
-            "odom")
+        # self.br.sendTransform(
+        #     self.odom2map_tf,
+        #     (0,0,0,1),
+        #     timestamp,
+        #     "map",
+        #     "odom")
 
     def meas_pkg_callback(self, msg):
         self.update_lock.acquire()
-        # Modem Meas taken by surface
+        # Modem Meas taken by topside
         
-        if msg.src_asset == "surface":
+        if msg.src_asset == "topside":
             self.cuprint("Receiving Surface Modem Measurements")
             modem_indices = []
             for meas in msg.measurements:
@@ -399,8 +395,8 @@ def get_indices_from_asset_names(blue_team):
         asset2id[asset] = next_index
         next_index += 1
 
-    if my_name != "surface":
-        asset2id["surface"] = -1 # arbitrary negative number
+    if my_name != "topside":
+        asset2id["topside"] = -1 # arbitrary negative number
 
     return asset2id
 
@@ -535,9 +531,9 @@ if __name__ == "__main__":
     blue_team_names = rospy.get_param("~blue_team_names")
     blue_team_positions = rospy.get_param("~blue_team_positions")
 
-    # Don't track surface if it isn't this agent
-    if my_name != "surface" and "surface" in blue_team_names:
-        ind = blue_team_names.index("surface")
+    # Don't track topside if it isn't this agent
+    if my_name != "topside" and "topside" in blue_team_names:
+        ind = blue_team_names.index("topside")
         if ind >= 0:
             blue_team_names.pop(ind)
             blue_team_positions.pop(ind)
@@ -547,8 +543,8 @@ if __name__ == "__main__":
     delta_codebook_table = get_delta_codebook_table()
     buffer_size = rospy.get_param("~buffer_space/capacity")
     meas_space_table = get_meas_space_table()
-    if my_name != "surface":
-        num_assets = len(asset2id) - 1 # subtract surface
+    if my_name != "topside":
+        num_assets = len(asset2id) - 1 # subtract topside
     else:
         num_assets = len(asset2id)
     x0, P0 = get_initial_estimate(num_assets * NUM_OWNSHIP_STATES, blue_team_names, blue_team_positions)
