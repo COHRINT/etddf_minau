@@ -188,6 +188,14 @@ class ETDDF_Node:
         self.cuprint("sonar meas added")
         self.update_lock.release()
 
+    def all_assets_same_plane(self):
+        now = rospy.get_rostime()
+        for a in self.asset2id:
+            if a != self.my_name:                
+                sonar_z = Measurement("sonar_z", now, self.my_name, a, 0, self.default_meas_variance["sonar_z"], [], -1.0)
+                self.filter.add_meas(sonar_z)
+
+
     def no_nav_filter_callback(self, event):
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
@@ -195,6 +203,7 @@ class ETDDF_Node:
 
         u = np.zeros((3,1))
         Q = self.Q
+        self.all_assets_same_plane()
         self.filter.update(t_now, u, Q, None, None)
         
         self.publish_estimates(t_now)
@@ -227,8 +236,9 @@ class ETDDF_Node:
         cov_twist = np.array(odom.twist.covariance).reshape(6,6)
         cov = np.zeros((6,6))
         cov[:3,:3] = cov_pose[:3,:3] #+ np.eye(3) * 4 #sim
-        cov[3:,3:] = cov_twist[:3,:3] #+ np.eye(3) * 0.1 #sim
+        cov[3:,3:] = cov_twist[:3,:3] #+ np.eye(3) * 0.03 #sim
 
+        self.all_assets_same_plane()
         c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
 
         if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
@@ -358,9 +368,6 @@ class ETDDF_Node:
             implicit_cnt, explicit_cnt = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
             
             # implicit_cnt, explicit_cnt = self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q, msg.all_measurements)
-            self.meas_pub_explicit.publish(Int64(explicit_cnt))
-            self.meas_pub_implicit.publish(Int64(implicit_cnt))
-            # self.cuprint("...caught up")
 
         self.update_lock.release()
         self.cuprint("Finished")
