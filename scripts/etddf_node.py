@@ -229,6 +229,14 @@ class ETDDF_Node:
         u = np.zeros((3,1))
         Q = self.Q
 
+        # Add Bruce's position
+        gps_x = Measurement("gps_x", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_x"], [], -1.0)
+        gps_y = Measurement("gps_y", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_y"], [], -1.0)
+        gps_z = Measurement("depth", t_now, "bluerov2_7", "", 0.5, self.default_meas_variance["gps_x"], [], -1.0)
+        self.filter.add_meas(gps_x)
+        self.filter.add_meas(gps_y)
+        self.filter.add_meas(gps_z)
+
         # Turn odom estimate into numpy
         mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
                         odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
