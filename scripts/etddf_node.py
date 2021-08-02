@@ -124,18 +124,21 @@ class ETDDF_Node:
         else:
             self.cuprint("Not intersecting with strapdown filter")
             rospy.Timer(rospy.Duration(1 / self.update_rate), self.no_nav_filter_callback)
-            
-        # Sonar Subscription
-        if rospy.get_param("~measurement_topics/sonar") != "None":
-            self.cuprint("Subscribing to sonar")
-            rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
         
         # Initialize Buffer Service
         rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
         # Wait for our first strapdown msg
+        self.cuprint("loaded, sleeping for RL to correct...")
+        rospy.sleep(15) # Wait for RL to correct
+        self.cuprint("Finally loaded")
 
-        self.cuprint("loaded")
+        # Sonar Subscription
+        if rospy.get_param("~measurement_topics/sonar") != "None":
+            self.cuprint("Subscribing to sonar")
+            rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
+
+        
 
     def orientation_estimate_callback(self, odom):
         self.meas_lock.acquire()
@@ -148,7 +151,8 @@ class ETDDF_Node:
         for target in sonar_list.targets:
             # self.cuprint("Receiving sonar measurements")
             if self.last_orientation is None: # No orientation, no linearization of the sonar measurement
-                # print("no ori")
+                print("no ori")
+                self.update_lock.release()
                 return
             if target.id == "detection":
                 continue
@@ -238,16 +242,27 @@ class ETDDF_Node:
         # self.filter.add_meas(gps_z)
 
         # Turn odom estimate into numpy
+        # Note the velocities are in the base_link frame --> Transform to odom frame # Assume zero pitch/roll
+        v_baselink = np.array([[odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
+        (r, p, y) = tf.transformations.euler_from_quaternion([self.last_orientation.x, \
+                self.last_orientation.y, self.last_orientation.z, self.last_orientation.w])
+        rot_mat = np.array([ # base_link to odom frame
+            [np.cos(y), -np.sin(y), 0],
+            [np.sin(y), np.cos(y),  0],
+            [0,         0,          1]
+            ])
+        v_odom = rot_mat.dot( v_baselink )
+
         mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
-                        odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
+                        v_odom[0,0], v_odom[1,0], v_odom[2,0]]]).T
         cov_pose = np.array(odom.pose.covariance).reshape(6,6)
         cov_twist = np.array(odom.twist.covariance).reshape(6,6)
         cov = np.zeros((6,6))
         cov[:3,:3] = cov_pose[:3,:3] #+ np.eye(3) * 4 #sim
-        cov[3:,3:] = cov_twist[:3,:3] #+ np.eye(3) * 0.03 #sim
+        cov[3:,3:] = rot_mat.dot( cov_twist[:3,:3] ).dot( rot_mat.T ) #+ np.eye(3) * 0.03 #sim
 
         self.all_assets_same_plane()
-        c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov) # Map frame
+        c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov)
 
         if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
             # Correct the odom estimate
