@@ -35,6 +35,8 @@ __version__ = "3.0"
 
 NUM_OWNSHIP_STATES = 6
 
+TOPSIDE_NAME = "wamv_1"
+
 class ETDDF_Node:
 
     def __init__(self, 
@@ -93,7 +95,7 @@ class ETDDF_Node:
 
         self.asset_pub_dict = {}
         for asset in self.asset2id.keys():
-            if "topside" in asset:
+            if TOPSIDE_NAME in asset:
                 continue
             self.asset_pub_dict[asset] = rospy.Publisher("etddf/estimate/" + asset, Odometry, queue_size=10)        
 
@@ -306,7 +308,7 @@ class ETDDF_Node:
     def publish_estimates(self, timestamp):
         ne = NetworkEstimate()
         for asset in self.asset2id.keys():
-            if "topside" in asset:
+            if TOPSIDE_NAME in asset:
                 continue
             if "red" in asset and not self.red_asset_found:
                 continue
@@ -358,7 +360,7 @@ class ETDDF_Node:
         self.update_lock.acquire()
         # Modem Meas taken by topside
         
-        if msg.src_asset == "topside":
+        if msg.src_asset == TOPSIDE_NAME:
             self.cuprint("Receiving Surface Modem Measurements")
             modem_indices = []
             for meas in msg.measurements:
@@ -425,8 +427,8 @@ def get_indices_from_asset_names(blue_team):
         asset2id[asset] = next_index
         next_index += 1
 
-    if my_name != "topside":
-        asset2id["topside"] = -1 # arbitrary negative number
+    if my_name != TOPSIDE_NAME:
+        asset2id[TOPSIDE_NAME] = -1 # arbitrary negative number
 
     return asset2id
 
@@ -562,8 +564,8 @@ if __name__ == "__main__":
     blue_team_positions = rospy.get_param("~blue_team_positions")
 
     # Don't track topside if it isn't this agent
-    if my_name != "topside" and "topside" in blue_team_names:
-        ind = blue_team_names.index("topside")
+    if my_name != TOPSIDE_NAME and TOPSIDE_NAME in blue_team_names:
+        ind = blue_team_names.index(TOPSIDE_NAME)
         if ind >= 0:
             blue_team_names.pop(ind)
             blue_team_positions.pop(ind)
@@ -573,7 +575,7 @@ if __name__ == "__main__":
     delta_codebook_table = get_delta_codebook_table()
     buffer_size = rospy.get_param("~buffer_space/capacity")
     meas_space_table = get_meas_space_table()
-    if my_name != "topside":
+    if my_name != TOPSIDE_NAME:
         num_assets = len(asset2id) - 1 # subtract topside
     else:
         num_assets = len(asset2id)
