@@ -131,9 +131,9 @@ class ETDDF_Node:
         rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
         # Wait for our first strapdown msg
-        self.cuprint("loaded, sleeping for RL to correct...")
-        rospy.sleep(15) # Wait for RL to correct
-        self.cuprint("Finally loaded")
+        # self.cuprint("loaded, sleeping for RL to correct...")
+        # rospy.sleep(15) # Wait for RL to correct
+        # self.cuprint("Finally loaded")
 
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
@@ -237,8 +237,8 @@ class ETDDF_Node:
 
         # Add Bruce's position
         # gps_x = Measurement("gps_x", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_x"], [], -1.0)
-        # gps_y = Measurement("gps_y", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_y"], [], -1.0)
-        # gps_z = Measurement("depth", t_now, "bluerov2_7", "", 0.5, self.default_meas_variance["gps_x"], [], -1.0)
+        # gps_y = Measurement("gps_y", t_now, "bluerov2_7", "", -1.0, self.default_meas_variance["gps_y"], [], -1.0)
+        # gps_z = Measurement("depth", t_now, "bluerov2_7", "", -0.5, self.default_meas_variance["gps_x"], [], -1.0)
         # self.filter.add_meas(gps_x)
         # self.filter.add_meas(gps_y)
         # self.filter.add_meas(gps_z)
@@ -369,12 +369,14 @@ class ETDDF_Node:
                     rospy.logerr("Ignoring Modem Elevation Measurement since we have depth measurements")
                     continue
                 elif meas.meas_type == "modem_azimuth":
-                    meas.global_pose = list(meas.global_pose)
+                    # meas.global_pose = list(meas.global_pose)
+                    meas.global_pose = [0,0,0,0]
                     # self.cuprint("azimuth: " + str(meas.data))
                     meas.data = (meas.data * np.pi) / 180
                     meas.variance = self.default_meas_variance["modem_azimuth"]
                 elif meas.meas_type == "modem_range":
-                    meas.global_pose = list(meas.global_pose)
+                    # meas.global_pose = list(meas.global_pose)
+                    meas.global_pose = [0,0,0,0]
                     # self.cuprint("range: " + str(meas.data))
                     meas.variance = self.default_meas_variance["modem_range"]
                 ind = self.filter.add_meas(meas, common=True)
