@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
+import sys
 """@package etddf
 
 ROS interface script for delta tiering filter
@@ -175,6 +176,11 @@ class ETDDF_Node:
 
             now = rospy.get_rostime()
             sonar_x, sonar_y = None, None
+
+            if target.id == self.my_name:
+                rospy.logerr("SONAR MEASURING ITSELF")
+                rospy.logerr(str(target))
+                sys.exit(-1)
 
             if "landmark_" in target.id:
                 sonar_x = Measurement("sonar_x", now, self.my_name, "", x, self.default_meas_variance["sonar_x"], self.landmark_dict[target.id[len("landmark_"):]], -1.0)
