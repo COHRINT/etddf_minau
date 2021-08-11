@@ -48,6 +48,8 @@ class SonarAssociator:
         self.blue_team[agent_name] = msg.pose
 
     def sonar_callback(self, msg):
+        self.pub.publish(msg)
+        return
         for i in range(len(msg.targets)):
 
             # Debugging
@@ -97,9 +99,9 @@ class SonarAssociator:
             
             # If not association --> assume it's the red asset
             # TODO future logic 
-            if not associated and self.red_team_names:
+            # if not associated and self.red_team_names:
                 # self.cuprint("Associating detection with red agent")
-                msg.targets[i].id = self.red_team_names[0]
+                # msg.targets[i].id = self.red_team_names[0]
 
             if msg.targets[i].id != original_id:
                 
