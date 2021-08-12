@@ -274,23 +274,22 @@ class ETDDF_Node:
 
         if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
             # Correct the odom estimate
-            # msg = PoseWithCovarianceStamped()
-            # msg.header = odom.header
-            # msg.header.frame_id = "odom"
+            msg = PoseWithCovarianceStamped()
+            msg.header = odom.header
+            msg.header.frame_id = "odom"
 
-            # # Transform
+            # Transform
             # mean -= transform
-            # msg.pose.pose.position.x = c_bar[0,0]
-            # msg.pose.pose.position.y = c_bar[1,0]
-            # msg.pose.pose.position.z = c_bar[2,0]
-            # msg.pose.pose.orientation = self.last_orientation
-            # new_cov = np.zeros((6,6))
-            # new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
-            # new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
+            msg.pose.pose.position.x = c_bar[0,0]
+            msg.pose.pose.position.y = c_bar[1,0]
+            msg.pose.pose.position.z = c_bar[2,0]
+            msg.pose.pose.orientation = self.last_orientation
+            new_cov = np.zeros((6,6))
+            new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
+            new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
 
-            # msg.pose.covariance = list(new_cov.flatten())
-            # self.intersection_pub.publish( msg )
-            pass
+            msg.pose.covariance = list(new_cov.flatten())
+            self.intersection_pub.publish( msg )
 
         self.publish_estimates(t_now)
         self.last_update_time = t_now
