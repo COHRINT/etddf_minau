@@ -36,7 +36,7 @@ __version__ = "3.0"
 
 NUM_OWNSHIP_STATES = 6
 
-TOPSIDE_NAME = "wamv_1"
+TOPSIDE_NAME = "topside"
 
 class ETDDF_Node:
 
