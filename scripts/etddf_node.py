@@ -120,7 +120,9 @@ class ETDDF_Node:
         self.modem_range_bias = rospy.get_param("mission_config/modem_range/bias")
         self.modem_range_var = rospy.get_param("mission_config/modem_range/var")
         surface_beacon_position = rospy.get_param("mission_config/surface_beacon_position")
-        self.surface_beacon_pose = surface_beacon_position.extend( np.radians( modem_az_bias) )
+        self.cuprint(str(self.modem_az_var))
+        self.cuprint(str(surface_beacon_position))
+        self.surface_beacon_pose = surface_beacon_position.append( np.radians( modem_az_bias) )
 
         if self.use_control_input:
             raise NotImplementedError("Control input")
@@ -440,8 +442,9 @@ def get_indices_from_asset_names(blue_team):
         asset2id[asset] = next_index
         next_index += 1
 
-    if my_name != self.topside_name:
-        asset2id[self.topside_name] = -1 # arbitrary negative number
+    topside_name = rospy.get_param("mission_config/surface_beacon_name")
+    if my_name != topside_name:
+        asset2id[topside_name] = -1 # arbitrary negative number
 
     return asset2id
 
