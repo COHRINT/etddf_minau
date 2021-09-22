@@ -3,7 +3,7 @@
     <arg name="blue_team_names" default="[]" />
     <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_dummy.yaml" />
     <!-- <arg name="simple_sharing" default="True" /> -->
-    <arg name="simple_sharing" default="False" />
+    <arg name="simple_sharing" default="True" />
 
     <!-- not required, list of lists, index of outer 
     list corresponds to index in blue_team_names -->

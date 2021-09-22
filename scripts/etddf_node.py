@@ -36,7 +36,7 @@ __version__ = "3.0"
 
 NUM_OWNSHIP_STATES = 6
 
-TOPSIDE_NAME = "wamv_1"
+TOPSIDE_NAME = "topside"
 
 class ETDDF_Node:
 
@@ -93,6 +93,8 @@ class ETDDF_Node:
                                     default_meas_variance)
         
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
+
+        self.cuprint("Loading...")
 
         self.asset_pub_dict = {}
         for asset in self.asset2id.keys():
@@ -242,12 +244,13 @@ class ETDDF_Node:
         Q = self.Q
 
         # Add Bruce's position
-        # gps_x = Measurement("gps_x", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_x"], [], -1.0)
-        # gps_y = Measurement("gps_y", t_now, "bluerov2_7", "", -1.0, self.default_meas_variance["gps_y"], [], -1.0)
-        # gps_z = Measurement("depth", t_now, "bluerov2_7", "", -0.5, self.default_meas_variance["gps_x"], [], -1.0)
-        # self.filter.add_meas(gps_x)
-        # self.filter.add_meas(gps_y)
-        # self.filter.add_meas(gps_z)
+        gps_x = Measurement("gps_x", t_now, "redactor", "", 2.0, self.default_meas_variance["gps_x"], [], -1.0)
+        gps_y = Measurement("gps_y", t_now, "redactor", "", 2.0, self.default_meas_variance["gps_y"], [], -1.0)
+        gps_z = Measurement("depth", t_now, "redactor", "", -0.5, self.default_meas_variance["gps_x"], [], -1.0)
+        self.red_asset_found = True
+        self.filter.add_meas(gps_x)
+        self.filter.add_meas(gps_y)
+        self.filter.add_meas(gps_z)
 
         # Turn odom estimate into numpy
         # Note the velocities are in the base_link frame --> Transform to odom frame # Assume zero pitch/roll
