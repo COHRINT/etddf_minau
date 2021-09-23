@@ -116,13 +116,14 @@ class ETDDF_Node:
 
         # Get modem corrections
         modem_az_bias = rospy.get_param("mission_config/modem_az/bias") # Just configure global pose
-        self.modem_az_var = rospy.get_param("mission_config/modem_az/var")
+        modem_az_std_deg = np.sqrt( rospy.get_param("mission_config/modem_az/var") )
+        self.modem_az_var = np.radians(modem_az_std_deg) ** 2
         self.modem_range_bias = rospy.get_param("mission_config/modem_range/bias")
         self.modem_range_var = rospy.get_param("mission_config/modem_range/var")
-        surface_beacon_position = rospy.get_param("mission_config/surface_beacon_position")
+        self.surface_beacon_pose = rospy.get_param("mission_config/surface_beacon_position")
+        self.surface_beacon_pose.append( np.radians( modem_az_bias) )
         self.cuprint(str(self.modem_az_var))
-        self.cuprint(str(surface_beacon_position))
-        self.surface_beacon_pose = surface_beacon_position.append( np.radians( modem_az_bias) )
+        self.cuprint(str(self.surface_beacon_pose))
 
         if self.use_control_input:
             raise NotImplementedError("Control input")
@@ -143,21 +144,13 @@ class ETDDF_Node:
         rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
         # Wait for our first strapdown msg
-        # self.cuprint("loaded, sleeping for RL to correct...")
-        # rospy.sleep(15) # Wait for RL to correct
-        # self.cuprint("Finally loaded")
+        self.cuprint("loaded, sleeping for RL to correct...")
+        rospy.sleep(10) # Wait for RL to correct
 
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
             self.cuprint("Subscribing to sonar")
             rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
-
-        
-
-    def orientation_estimate_callback(self, odom):
-        self.meas_lock.acquire()
-        
-        self.meas_lock.release()
 
     def sonar_callback(self, sonar_list):
         self.cuprint("Receiving sonar meas!!")
@@ -392,6 +385,7 @@ class ETDDF_Node:
                     meas.global_pose = self.surface_beacon_pose
                     meas.variance = self.modem_range_var
                     meas.data -= self.modem_range_bias
+                print(meas)
                 ind = self.filter.add_meas(meas, common=True)
                 modem_indices.append(ind)
             self.filter.catch_up(min(modem_indices))
