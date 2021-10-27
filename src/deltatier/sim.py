@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from plot_path import plot_path
 from propagate_nav import propagate_nav
 from normalize_state import normalize_state
 from get_control import get_control
@@ -10,22 +11,13 @@ import sys
 """
 My goal for this simulator is to
 - Verify in a simple setting correct implementation of DT
-
-* Add Runge-Kutta integration to propagate_nav
-
-* I should add sigma point integration to filtering the range & azimuth measurements
-* 
-
-
-OK how could I verify that control input is working?
-* check expected inputs for certain conditions
-* plot, no se puede ahorita
-
 """
+
+# np.random.seed(0)
 
 # Simulation
 
-BLUE_NUM = 1;
+BLUE_NUM = 2;
 RED_NUM = 0;
 NUM_AGENTS = BLUE_NUM + RED_NUM;
 STATES = 6; # Each agent has x,y,theta, x_vel,y_vel, theta_vel
@@ -67,11 +59,11 @@ for a in range(NUM_AGENTS):
     Q[STATES*a+4, STATES*a+4] = 0.1
     Q[STATES*a+5, STATES*a+5] = 0.1
 
-accel = np.zeros((2*NUM_AGENTS,1))
-U = np.zeros((TOTAL_STATES, 2*NUM_AGENTS))
-for a in range(NUM_AGENTS):
-    U[STATES*a+3, 2*a] = 1; # FWD velocity
-    U[STATES*a+5, 2*a+1] = 1; # theta dot
+# vel_cmd = np.zeros((2*NUM_AGENTS,1))
+# U = np.zeros((TOTAL_STATES, 2*NUM_AGENTS))
+# for a in range(NUM_AGENTS):
+#     U[STATES*a+3, 2*a] = 1; # x vel
+#     U[STATES*a+4, 2*a+1] = 1; # y vel
 
 waypoints = np.zeros((2, NUM_AGENTS))
 for a in range(NUM_AGENTS):
@@ -88,37 +80,34 @@ for loop_num in range(NUM_LOOPS):
 
     # Cheeck reached waypoint
     for a in range(NUM_AGENTS):
-        x_pos = x_gt[STATES*a:STATES*a+1, 0]
+        x_pos = x_gt[STATES*a:STATES*a+2, 0]
         delta = np.linalg.norm( waypoints[:,a] - x_pos )
-        if np.mod( loop_num, 10) == 0:
-            print(delta)
-        if delta < 1:
-            print("Waypoint reached!")
+        if delta < 1.0:
+            print("Waypoint reached by agent {}!".format(a))
             waypoints[:,a] = get_waypoint(MAP_DIM)
-            sys.exit(0)
     
     # Get control input
-    accel = np.zeros((2*NUM_AGENTS, 1))
+    vel_cmd = np.zeros((2*NUM_AGENTS, 1))
     for a in range(NUM_AGENTS):
         waypoint = waypoints[:,a]
-        print(x_gt)
-        print(waypoint)
-        accel[2*a:2*a+2,0] = get_control(x_gt, waypoint, a, STATES)
-        print(accel)
-        print(U)
-        sys.exit(0)
+        vel_cmd[2*a:2*a+2,0] = get_control(x_gt, waypoint, a, STATES)
 
     # Update truth
-    # TODO we need to add propagation of the state --> use runge kutta integration
     for a in range(NUM_AGENTS):
-        x_gt_agent = x_gt[STATES*a : STATES*(a+1), 0]
-        [x_gt_agent, _] = propagate_nav(x_gt_agent, np.zeros(x_gt_agent.shape[0]))
+        x_gt_agent = np.reshape( x_gt[STATES*a : STATES*(a+1), 0], (STATES,1) )
+        x_gt_agent[3:5, 0] = vel_cmd[2*a:2*a+2,0]
+        F = np.eye(6)
+        F[0,3] = 1
+        F[1,4] = 1
+        F[2,5] = 1
+        F[3:,3:] = 0
+        x_gt_agent = np.dot(F, x_gt_agent)
         x_gt[STATES*a : STATES*(a+1), 0] = x_gt_agent[:,0]
 
-    x_gt = x_gt + U.dot(accel) #+ np.dot(Q, np.random.normal(scale= q, size=(TOTAL_STATES,1)))
     x_gt = normalize_state(x_gt, NUM_AGENTS, STATES)
     x_gt_history[:, loop_num] = x_gt[:,0]
 
     # Just check if it's reaching waypoints
 
 print(x_gt)
+# plot_path(x_gt_history, MAP_DIM, NUM_LOOPS, waypoints)
