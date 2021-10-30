@@ -1,12 +1,21 @@
 #!/usr/bin/env python
+from filter_dvl import filter_dvl
+from get_estimate_nav import get_estimate_nav
 from plot_path import plot_path
 from propagate_nav import propagate_nav
 from normalize_state import normalize_state
 from get_control import get_control
 from get_waypoint import get_waypoint
 from normalize_angle import normalize_angle
+from plot_error_nav import plot_error_nav
 import numpy as np
+import numpy.matlib
 import sys
+from copy import deepcopy
+
+from set_estimate_nav import set_estimate_nav
+
+np.random.seed(0)
 
 """
 My goal for this simulator is to
@@ -24,7 +33,7 @@ STATES = 6; # Each agent has x,y,theta, x_vel,y_vel, theta_vel
 TRACK_STATES = 4 * NUM_AGENTS; # x,y,x_dot, y_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS; 
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM;
-NUM_LOOPS = 200;
+NUM_LOOPS = 100;
 MAP_DIM = 20; # Square with side length
 PROB_DETECTION = 0.8;
 SONAR_RANGE = 10.0;
@@ -53,24 +62,23 @@ for i in range(NUM_AGENTS):
     x_gt[STATES*i+1,0] = MAP_DIM*np.random.uniform() - MAP_DIM / 2.0
     x_gt[STATES*i+2,0] = normalize_angle( 2*np.pi*np.random.uniform() )
 
+# Initialize Nav Filter Estimate
+P = 0.1 * np.eye(STATES)
+x_navs = deepcopy( np.reshape( x_gt, (STATES, NUM_AGENTS), "F"));
+P_navs = np.matlib.repmat(P, 1, NUM_AGENTS);
+
+x_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS))
+P_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS*STATES))
+
 Q = np.eye(TOTAL_STATES)
 for a in range(NUM_AGENTS):
     Q[STATES*a+3, STATES*a+3] = 0.1
     Q[STATES*a+4, STATES*a+4] = 0.1
     Q[STATES*a+5, STATES*a+5] = 0.1
 
-# vel_cmd = np.zeros((2*NUM_AGENTS,1))
-# U = np.zeros((TOTAL_STATES, 2*NUM_AGENTS))
-# for a in range(NUM_AGENTS):
-#     U[STATES*a+3, 2*a] = 1; # x vel
-#     U[STATES*a+4, 2*a+1] = 1; # y vel
-
 waypoints = np.zeros((2, NUM_AGENTS))
 for a in range(NUM_AGENTS):
     waypoints[:, a] = get_waypoint(MAP_DIM)
-print(waypoints)
-
-print(x_gt)
 
 # HISTORY
 x_gt_history = np.zeros((TOTAL_STATES, NUM_LOOPS))
@@ -107,7 +115,29 @@ for loop_num in range(NUM_LOOPS):
     x_gt = normalize_state(x_gt, NUM_AGENTS, STATES)
     x_gt_history[:, loop_num] = x_gt[:,0]
 
-    # Just check if it's reaching waypoints
+    for a in range(BLUE_NUM):
+        
+        # Navigation Filter Prediction
+        x_nav, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
+        F = np.eye(6)
+        F[0,3] = 1
+        F[1,4] = 1
+        F[2,5] = 1
+        x_nav = np.dot(F, x_nav)
+        P_nav = np.dot(F, P_nav.dot( F.T)) + Q[:6,:6]
+        x_nav = normalize_state(x_nav, 1, STATES)
 
-print(x_gt)
-# plot_path(x_gt_history, MAP_DIM, NUM_LOOPS, waypoints)
+        # Nav Filter Correction
+        x_nav, P_nav = filter_dvl(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
+
+        x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
+
+    # TODO filter modem updates
+
+    # Record x_navs_history, P_navs_history
+    x_navs_history[:, loop_num] = np.reshape(x_navs, -1, "F")
+    for a in range(BLUE_NUM):
+        _, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
+        P_navs_history[STATES*a:STATES*(a+1), STATES*loop_num: STATES*(loop_num+1)] = P_nav
+
+plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)
