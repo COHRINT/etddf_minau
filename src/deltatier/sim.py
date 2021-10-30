@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from filter_dvl import filter_dvl
+from filter_baro import filter_baro
 from get_estimate_nav import get_estimate_nav
 from plot_path import plot_path
 from propagate_nav import propagate_nav
@@ -29,8 +30,8 @@ My goal for this simulator is to
 BLUE_NUM = 2;
 RED_NUM = 0;
 NUM_AGENTS = BLUE_NUM + RED_NUM;
-STATES = 6; # Each agent has x,y,theta, x_vel,y_vel, theta_vel
-TRACK_STATES = 4 * NUM_AGENTS; # x,y,x_dot, y_dot for each agent
+STATES = 8; # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
+TRACK_STATES = 6 * NUM_AGENTS; # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS; 
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM;
 NUM_LOOPS = 100;
@@ -72,9 +73,9 @@ P_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS*STATES))
 
 Q = np.eye(TOTAL_STATES)
 for a in range(NUM_AGENTS):
-    Q[STATES*a+3, STATES*a+3] = 0.1
     Q[STATES*a+4, STATES*a+4] = 0.1
     Q[STATES*a+5, STATES*a+5] = 0.1
+    Q[STATES*a+6, STATES*a+6] = 0.1
 
 waypoints = np.zeros((2, NUM_AGENTS))
 for a in range(NUM_AGENTS):
@@ -103,12 +104,13 @@ for loop_num in range(NUM_LOOPS):
     # Update truth
     for a in range(NUM_AGENTS):
         x_gt_agent = np.reshape( x_gt[STATES*a : STATES*(a+1), 0], (STATES,1) )
-        x_gt_agent[3:5, 0] = vel_cmd[2*a:2*a+2,0]
-        F = np.eye(6)
-        F[0,3] = 1
-        F[1,4] = 1
-        F[2,5] = 1
-        F[3:,3:] = 0
+        x_gt_agent[4:6, 0] = vel_cmd[2*a:2*a+2,0]
+        F = np.eye(STATES)
+        F[0,4] = 1
+        F[1,5] = 1
+        F[2,6] = 1
+        F[3,7] = 1
+        F[4:,4:] = 0
         x_gt_agent = np.dot(F, x_gt_agent)
         x_gt[STATES*a : STATES*(a+1), 0] = x_gt_agent[:,0]
 
@@ -119,16 +121,18 @@ for loop_num in range(NUM_LOOPS):
         
         # Navigation Filter Prediction
         x_nav, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
-        F = np.eye(6)
-        F[0,3] = 1
-        F[1,4] = 1
-        F[2,5] = 1
+        F = np.eye(STATES)
+        F[0,4] = 1
+        F[1,5] = 1
+        F[2,6] = 1
+        F[3,7] = 1
         x_nav = np.dot(F, x_nav)
-        P_nav = np.dot(F, P_nav.dot( F.T)) + Q[:6,:6]
+        P_nav = np.dot(F, P_nav.dot( F.T)) + Q[:STATES,:STATES]
         x_nav = normalize_state(x_nav, 1, STATES)
 
         # Nav Filter Correction
         x_nav, P_nav = filter_dvl(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
+        x_nav, P_nav = filter_baro(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
 
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
