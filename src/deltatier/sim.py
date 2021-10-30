@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from filter_dvl import filter_dvl
 from filter_baro import filter_baro
+from filter_compass import filter_compass
 from get_estimate_nav import get_estimate_nav
 from plot_path import plot_path
 from propagate_nav import propagate_nav
@@ -133,6 +134,7 @@ for loop_num in range(NUM_LOOPS):
         # Nav Filter Correction
         x_nav, P_nav = filter_dvl(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
         x_nav, P_nav = filter_baro(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
+        x_nav, P_nav = filter_compass(x_nav, P_nav, x_gt, w, w_perceived, NUM_AGENTS, STATES, a)
 
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 

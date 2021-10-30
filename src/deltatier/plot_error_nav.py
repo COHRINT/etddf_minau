@@ -17,7 +17,7 @@ def plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, agent):
     error = x_gt_history_agent - x_nav_history
 
     fig = plt.figure()
-    LABELS = ["x", "y", "z", "theta", "x_dot", "y_dot", "z", "theta_dot"]
+    LABELS = ["x", "y", "z", "theta", "x_dot", "y_dot", "z_dot", "theta_dot"]
 
     for s in range(STATES):
         label = LABELS[s]
