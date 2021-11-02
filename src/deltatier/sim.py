@@ -17,7 +17,7 @@ from copy import deepcopy
 
 from set_estimate_nav import set_estimate_nav
 
-np.random.seed(0)
+# np.random.seed(0)
 np.set_printoptions(precision=2)
 np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
@@ -27,50 +27,52 @@ My goal for this simulator is to
 - Verify in a simple setting correct implementation of DT
 """
 
-# np.random.seed(0)
-
 # Simulation
 
-BLUE_NUM = 1;
-RED_NUM = 0;
-NUM_AGENTS = BLUE_NUM + RED_NUM;
-STATES = 8; # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
-TRACK_STATES = 6 * NUM_AGENTS; # x,y,z, x_dot, y_dot, z_dot for each agent
-TOTAL_STATES = STATES * NUM_AGENTS; 
-TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM;
-NUM_LOOPS = 200;
-MAP_DIM = 20; # Square with side length
-PROB_DETECTION = 0.8;
-SONAR_RANGE = 10.0;
-MODEM_LOCATION = np.array([[11,11]]).T;
+BLUE_NUM = 2
+RED_NUM = 0
+NUM_AGENTS = BLUE_NUM + RED_NUM
+STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
+TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
+TOTAL_STATES = STATES * NUM_AGENTS
+TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
+NUM_LOOPS = 200
+MAP_DIM = 20 # Square with side length
+PROB_DETECTION = 0.8
+SONAR_RANGE = 10.0
+MODEM_LOCATION = np.array([[11,11]]).T
 
 # Noise Params
-q = 0.05; # std
-w = 0.1; # std
-w_gps = 1.0; # std
-q_perceived = q*q;
-w_perceived = w*w;
-w_gps_perceived = w_gps*w_gps;
+q = 0.05 # std
+w = 0.1 # std
+w_gps = 1.0 # std
+q_perceived = q*q
+w_perceived = w*w
+w_gps_perceived = w_gps*w_gps
 
-q_perceived_tracking = 0.05;
-w_perceived_nonlinear = 0.2;
-w_perceived_modem_range = 0.1;
-w_perceived_modem_azimuth = w_perceived_nonlinear;
+q_perceived_tracking = 0.05
+w_perceived_nonlinear = 0.2
+w_perceived_modem_range = 0.1
+w_perceived_modem_azimuth = w_perceived_nonlinear
 
-w_perceived_sonar_range = 0.1;
-w_perceived_sonar_azimuth = w_perceived_nonlinear;
+w_perceived_sonar_range = 0.1
+w_perceived_sonar_azimuth = w_perceived_nonlinear
 
 # Initialize x_gt
 x_gt = np.zeros((TOTAL_STATES,1))
 for i in range(NUM_AGENTS):
     x_gt[STATES*i,0] = MAP_DIM*np.random.uniform() - MAP_DIM / 2.0
     x_gt[STATES*i+1,0] = MAP_DIM*np.random.uniform() - MAP_DIM / 2.0
-    x_gt[STATES*i+2,0] = normalize_angle( 2*np.pi*np.random.uniform() )
+    # zero z
+    x_gt[STATES*i+3,0] = normalize_angle( 2*np.pi*np.random.uniform() )
+    # x_gt[STATES*i+4,0] = np.random.uniform()
+    # x_gt[STATES*i+5,0] = np.random.uniform()
+    
 
 # Initialize Nav Filter Estimate
 P = 0.1 * np.eye(STATES)
-x_navs = deepcopy( np.reshape( x_gt, (STATES, NUM_AGENTS), "F"));
-P_navs = np.matlib.repmat(P, 1, NUM_AGENTS);
+x_navs = deepcopy( np.reshape( x_gt, (STATES, NUM_AGENTS), "F"))
+P_navs = np.matlib.repmat(P, 1, NUM_AGENTS)
 
 x_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS))
 P_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS*STATES))
