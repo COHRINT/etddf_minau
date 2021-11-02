@@ -18,6 +18,9 @@ from copy import deepcopy
 from set_estimate_nav import set_estimate_nav
 
 np.random.seed(0)
+np.set_printoptions(precision=2)
+np.set_printoptions(suppress=True)
+np.set_printoptions(linewidth=np.inf)
 
 """
 My goal for this simulator is to
@@ -28,14 +31,14 @@ My goal for this simulator is to
 
 # Simulation
 
-BLUE_NUM = 2;
+BLUE_NUM = 1;
 RED_NUM = 0;
 NUM_AGENTS = BLUE_NUM + RED_NUM;
 STATES = 8; # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS; # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS; 
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM;
-NUM_LOOPS = 100;
+NUM_LOOPS = 200;
 MAP_DIM = 20; # Square with side length
 PROB_DETECTION = 0.8;
 SONAR_RANGE = 10.0;
@@ -77,6 +80,12 @@ for a in range(NUM_AGENTS):
     Q[STATES*a+4, STATES*a+4] = 0.1
     Q[STATES*a+5, STATES*a+5] = 0.1
     Q[STATES*a+6, STATES*a+6] = 0.1
+    Q[STATES*a+7, STATES*a+7] = 0.1
+
+U = np.zeros((STATES,2))
+U[4,0] = 1
+U[5,1] = 1
+U *= 0.05
 
 waypoints = np.zeros((2, NUM_AGENTS))
 for a in range(NUM_AGENTS):
@@ -105,14 +114,18 @@ for loop_num in range(NUM_LOOPS):
     # Update truth
     for a in range(NUM_AGENTS):
         x_gt_agent = np.reshape( x_gt[STATES*a : STATES*(a+1), 0], (STATES,1) )
-        x_gt_agent[4:6, 0] = vel_cmd[2*a:2*a+2,0]
         F = np.eye(STATES)
         F[0,4] = 1
         F[1,5] = 1
         F[2,6] = 1
         F[3,7] = 1
-        F[4:,4:] = 0
-        x_gt_agent = np.dot(F, x_gt_agent)
+        vel = x_gt_agent[4:6,0]
+        target_vel = vel_cmd[2*a:2*a+2,0]
+        deltav = target_vel - vel
+        control = np.reshape( U @ deltav, (STATES,1) )
+
+        x_gt_agent = np.dot(F, x_gt_agent) + control #+ Q[:STATES,:STATES] @ np.random.normal(0.0, q, (STATES,1))
+        # print(Q[:STATES,:STATES] @ np.random.normal(0.0, q, (STATES,1)))
         x_gt[STATES*a : STATES*(a+1), 0] = x_gt_agent[:,0]
 
     x_gt = normalize_state(x_gt, NUM_AGENTS, STATES)
@@ -127,8 +140,8 @@ for loop_num in range(NUM_LOOPS):
         F[1,5] = 1
         F[2,6] = 1
         F[3,7] = 1
-        x_nav = np.dot(F, x_nav)
-        P_nav = np.dot(F, P_nav.dot( F.T)) + Q[:STATES,:STATES]
+        x_nav = F @ x_nav
+        P_nav = F @ P_nav @ F.T + q_perceived * Q[:STATES,:STATES]
         x_nav = normalize_state(x_nav, 1, STATES)
 
         # Nav Filter Correction
@@ -139,6 +152,7 @@ for loop_num in range(NUM_LOOPS):
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
     # TODO filter modem updates
+    # 
 
     # Record x_navs_history, P_navs_history
     x_navs_history[:, loop_num] = np.reshape(x_navs, -1, "F")
@@ -146,4 +160,5 @@ for loop_num in range(NUM_LOOPS):
         _, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
         P_navs_history[STATES*a:STATES*(a+1), STATES*loop_num: STATES*(loop_num+1)] = P_nav
 
+# print(P_navs)
 plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)

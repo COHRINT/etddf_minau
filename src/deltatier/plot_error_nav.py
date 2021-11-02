@@ -12,8 +12,6 @@ def plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, agent):
     x_nav_history = x_navs_history[start_row:end_row, :]
     P_nav_history = P_navs_history[start_row:end_row, :]
 
-    print(np.shape(x_nav_history))
-    print(np.shape(x_gt_history_agent))
     error = x_gt_history_agent - x_nav_history
 
     fig = plt.figure()
