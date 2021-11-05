@@ -154,7 +154,7 @@ for loop_num in range(NUM_LOOPS):
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
     # TODO filter modem updates
-    # 
+    
 
     # Record x_navs_history, P_navs_history
     x_navs_history[:, loop_num] = np.reshape(x_navs, -1, "F")
