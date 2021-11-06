@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+from kf_filter import KalmanFilter
+from modem_schedule import modem_schedule
+from plot_error_track import plot_error_track
+from take_sonar_meas import take_sonar_meas
 from filter_dvl import filter_dvl
 from filter_baro import filter_baro
 from filter_compass import filter_compass
@@ -27,10 +31,12 @@ My goal for this simulator is to
 - Verify in a simple setting correct implementation of DT
 """
 
+AGENT_TO_PLOT = 0
+
 # Simulation
 
 BLUE_NUM = 2
-RED_NUM = 0
+RED_NUM = 0 # OR 1
 NUM_AGENTS = BLUE_NUM + RED_NUM
 STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
@@ -39,8 +45,8 @@ TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
 NUM_LOOPS = 200
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 0.8
-SONAR_RANGE = 10.0
-MODEM_LOCATION = np.array([[11,11]]).T
+SONAR_RANGE = 20.0
+MODEM_LOCATION = [11,11,0]
 
 # Noise Params
 q = 0.05 # std
@@ -50,7 +56,8 @@ q_perceived = q*q
 w_perceived = w*w
 w_gps_perceived = w_gps*w_gps
 
-q_perceived_tracking = 0.05
+q_perceived_tracking_pos = 0.05
+q_perceived_tracking_vel = 0.01
 w_perceived_nonlinear = 0.2
 w_perceived_modem_range = 0.1
 w_perceived_modem_azimuth = w_perceived_nonlinear
@@ -92,6 +99,19 @@ U *= 0.05
 waypoints = np.zeros((2, NUM_AGENTS))
 for a in range(NUM_AGENTS):
     waypoints[:, a] = get_waypoint(MAP_DIM)
+
+blue_positions = []
+for a in range(BLUE_NUM):
+    agent_state = x_gt[STATES*a : STATES*(a+1),0]
+    pos = agent_state[:3].tolist()
+    blue_positions.append(pos)
+
+landmark_positions = []
+
+blue_filters = []
+for b in range(BLUE_NUM):
+    kf = KalmanFilter(blue_positions, landmark_positions, RED_NUM, is_deltatier=True)
+    blue_filters.append( kf )
 
 # HISTORY
 x_gt_history = np.zeros((TOTAL_STATES, NUM_LOOPS))
@@ -153,8 +173,17 @@ for loop_num in range(NUM_LOOPS):
 
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
+
+        # Update Tracking Filter
+        kf = blue_filters[a]
+        kf.propogate(q_perceived_tracking_pos, q_perceived_tracking_vel)
+        depth_est = x_nav[2,0]
+        kf.filter_artificial_depth(depth_est)
+        # take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION)
+
     # TODO filter modem updates
-    
+    for a in range(BLUE_NUM):
+        modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth)
 
     # Record x_navs_history, P_navs_history
     x_navs_history[:, loop_num] = np.reshape(x_navs, -1, "F")
@@ -163,4 +192,9 @@ for loop_num in range(NUM_LOOPS):
         P_navs_history[STATES*a:STATES*(a+1), STATES*loop_num: STATES*(loop_num+1)] = P_nav
 
 # print(P_navs)
-plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)
+# plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)
+
+agent_to_plot_kf = blue_filters[AGENT_TO_PLOT]
+x_hat_history_lst = agent_to_plot_kf.x_hat_history
+P_history_lst = agent_to_plot_kf.P_history
+plot_error_track(x_gt_history, x_hat_history_lst, P_history_lst, STATES, BLUE_NUM, RED_NUM)

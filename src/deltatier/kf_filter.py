@@ -3,8 +3,6 @@ from numpy.linalg import inv, norm
 from normalize_angle import normalize_angle
 import itertools
 
-from sim import BLUE_NUM, RED_NUM
-
 """
 Ledgers
 - x_nav_history
@@ -29,6 +27,8 @@ They are unuseful for association and require a global position to hone in the u
 THIS MAY COMPLICATE THINGS
 we track blue agent positions and uncertainty
 we do not track velocity of landmarks
+
+KEEP landmarks in the estimate, so that we can talk about them more naturally..
 """
 
 STATES = 6 # x,y,z, x_vel, y_vel, z_vel
@@ -89,18 +89,23 @@ class KalmanFilter:
         self.P = np.diag(self.P)
 
         self.is_deltatier = is_deltatier
-        # if self.is_deltatier:
+        if self.is_deltatier:
+            self.x_hat_history = []
+            self.P_history = []
 
         #     self.x_common = self.x_hat
         #     self.P_common = self.P
         #     self.last_share_index = 0
         #     self.ledger = np.zeros((10000, len(MEAS_COLUMNS)))
-        #     self.x_hat_history = np.zeros((np.shape()))
-        #     self.P_history = np.zeros(())
+            
         #     self.x_nav_history = np.zeros(())
         #     self.P_nav_history = np.zeros(())
 
     def propogate(self, position_process_noise, velocity_process_noise, delta_time=1.0):
+
+        # Save the last estimate
+        self.x_hat_history.append( np.copy(self.x_hat))
+        self.P_history.append( np.copy(self.P))
 
         # Create F and Q matrices
         F = np.eye(self.NUM_STATES)
@@ -121,6 +126,7 @@ class KalmanFilter:
         self.P = F @ self.P @ F.T + Q
 
         self.index += 1
+        return self.index
 
     def filter_artificial_depth(self, depth, R=1e-2):
         """
@@ -188,12 +194,13 @@ class KalmanFilter:
         P = self.P
 
         K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K @ (meas_value - pred)
+        x = x + K * (meas_value - pred)
         P = P - K @ H @ P
 
         self.x_hat = x
         self.P = P
 
+        # TODO add to ledger...
 
     # Either to an agent or landmark
     def filter_azimuth_tracked(self, meas_value, R, collecting_agent, collected_agent): 
@@ -210,7 +217,7 @@ class KalmanFilter:
         delta_pred = np.array([[x2 - x1], [y2 - y1]])
         pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
 
-        dadx1 = (y2 - y1) / norm(delta_pred)**2
+        dadx1 = (y2 - y1) / norm(delta_pred)**2 # TODO check these are correct partials
         dadx2 = -(y2 - y1) / norm(delta_pred)**2
         dady1 = -(x2 - x1) / norm(delta_pred)**2
         dady2 = (x2 - x1) / norm(delta_pred)**2
@@ -224,7 +231,7 @@ class KalmanFilter:
         P = self.P
 
         K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K @ normalize_angle(meas_value - pred)
+        x = x + K * normalize_angle(meas_value - pred)
         P = P - K @ H @ P
 
         self.x_hat = x
@@ -235,37 +242,33 @@ class KalmanFilter:
         startx1 = self._get_agent_state_index(collected_agent)
         x1 = self.x_hat[startx1, 0]
         y1 = self.x_hat[startx1 + 1, 0]
-        z1 = self.x_hat[startx1 + 1, 0]
+        z1 = self.x_hat[startx1 + 2, 0]
         x2 = position[0]
         y2 = position[1]
         z2 = position[2]
 
-        delta_pred = np.array([[x1 - x2],[y1 - y2], [z1 - z2]])
+        delta_pred = np.array([x1 - x2,y1 - y2, z1 - z2])
         pred = norm(delta_pred)
+
+        drdx1 = delta_pred[0] / norm(delta_pred)
+        drdy1 = delta_pred[1] / norm(delta_pred)
+        drdz1 = delta_pred[2] / norm(delta_pred)
         
-
-        delta_pred = np.array([[x2 - x1], [y2 - y1]])
-        pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
-
-        dadx1 = (y2 - y1) / norm(delta_pred)**2
-        dadx2 = -(y2 - y1) / norm(delta_pred)**2
-        dady1 = -(x2 - x1) / norm(delta_pred)**2
-        dady2 = (x2 - x1) / norm(delta_pred)**2
         H = np.zeros((1, self.NUM_STATES))
-        H[0, startx1] = dadx1
-        H[0, startx1+1] = dady1
+        H[0, startx1] = drdx1
+        H[0, startx1+1] = drdy1
+        H[0, startx1+2] = drdz1
 
         x = self.x_hat
         P = self.P
 
         K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K @ normalize_angle(meas_value - pred)
+        x = x + K * (meas_value - pred)
         P = P - K @ H @ P
 
         self.x_hat = x
         self.P = P
         
-
     # Used in minau project for psuedo-gps measurements from surface beacon
     def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent):
         """
@@ -290,7 +293,7 @@ class KalmanFilter:
         P = self.P
 
         K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K @ normalize_angle(meas_value - pred)
+        x = x + K * normalize_angle(meas_value - pred)
         P = P - K @ H @ P
 
         self.x_hat = x
@@ -306,11 +309,11 @@ class KalmanFilter:
         pass
 
     def _get_agent_state_index(self, agent_num):
-        if agent_num < BLUE_NUM + RED_NUM:
+        if agent_num < self.BLUE_NUM + self.RED_NUM:
             return 6*agent_num
         else: # landmark
-            remainder = agent_num - BLUE_NUM + RED_NUM
-            return 6*(BLUE_NUM + RED_NUM) + 3*remainder
+            remainder = agent_num - self.BLUE_NUM + self.RED_NUM
+            return 6*(self.BLUE_NUM + self.RED_NUM) + 3*remainder
     
 
 if __name__ == "__main__":
