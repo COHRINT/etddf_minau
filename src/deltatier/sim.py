@@ -42,7 +42,7 @@ STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
-NUM_LOOPS = 200
+NUM_LOOPS = 2000
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 0.8
 SONAR_RANGE = 20.0
@@ -179,9 +179,8 @@ for loop_num in range(NUM_LOOPS):
         kf.propogate(q_perceived_tracking_pos, q_perceived_tracking_vel)
         depth_est = x_nav[2,0]
         kf.filter_artificial_depth(depth_est)
-        # take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION)
+        take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
 
-    # TODO filter modem updates
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth)
 

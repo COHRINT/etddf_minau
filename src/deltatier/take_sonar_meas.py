@@ -11,7 +11,7 @@ def take_sonar_meas(kf, x_gt, x_nav, agent, w, w_perceived_range, w_perceieved_a
     Then take in scan angle
     """
 
-    num_agents = x_gt.shape[0] / STATES
+    num_agents = int( x_gt.shape[0] / STATES )
     agent_states = x_gt[STATES*agent : STATES*(agent+1),0]
     agent_position = agent_states[:3]
     agent_theta_gt = agent_states[3]
