@@ -7,7 +7,7 @@ This file manages the modem scheduler
 Start with just taking a global modem measurement of all agents on every time cycle
 """
 
-def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location, w, w_perceived_modem_range, w_perceived_modem_azimuth):
+def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location, w, w_perceived_modem_range, w_perceived_modem_azimuth, delta_range):
 
     ping_delay = 3
     broadcast_delay = 4
@@ -23,12 +23,13 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
     current_iter = np.mod(loop_num, total_time)
 
     # TODO change
-    current_iter = ping_time
+    # current_iter = ping_time
+    kf = kfs[agent]
 
     # Surface broadcasts positions
     if current_iter == ping_time:
 
-        kf = kfs[agent]
+        
 
         for b in range(BLUE_NUM):
 
@@ -48,17 +49,10 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
         
     else: # Check if an agent is sharing
         pass
+        # This agent is sharing
+        # if agent_share_times[agent] == current_iter:
+        #     buffer, delta = kf.pull_buffer(delta_range)
 
-
-        # agent_states = x_gt[STATES*agent : STATES*(agent+1),0]
-        # agent_position = agent_states[:3]
-        # agent_theta_gt = agent_states[3]
-
-        # for a in range(num_agents):
-        #     if a == agent:
-        #         continue
-
-        #     a_states = x_gt[STATES*a : STATES*(a+1),0]
-        #     a_pos = a_states[:3]
+            # TODO rx_buffer
 
     pass

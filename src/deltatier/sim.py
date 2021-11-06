@@ -47,6 +47,7 @@ MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 0.8
 SONAR_RANGE = 20.0
 MODEM_LOCATION = [11,11,0]
+DELTA_RANGE = list(range(100))
 
 # Noise Params
 q = 0.05 # std
@@ -182,7 +183,7 @@ for loop_num in range(NUM_LOOPS):
         take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
 
     for a in range(BLUE_NUM):
-        modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth)
+        modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth, DELTA_RANGE)
 
     # Intersect estimates
     for a in range(BLUE_NUM):

@@ -40,7 +40,7 @@ KNOWN_VELOCITY_UNCERTAINTY = 1e-2
 UNKNOWN_AGENT_UNCERTAINTY = 1e6 # Red and blue agents with unknown starting locations
 
 # DELTATIER
-MEAS_COLUMNS = ["type", "index", "start_x1", "start_x2", "data"]
+MEAS_COLUMNS = ["type", "index", "start_x1", "start_x2", "data", "R"]
 MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
 
 class KalmanFilter:
@@ -61,7 +61,7 @@ class KalmanFilter:
         self.RED_NUM = 1 if red_agent else 0
         self.NUM_AGENTS = self.BLUE_NUM + self.RED_NUM + self.LANDMARK_NUM
 
-        self.index = 0
+        self.index = -1
 
         # Initialize estimates using provided positions
         self.P = []
@@ -95,19 +95,21 @@ class KalmanFilter:
             self.x_hat_history = []
             self.P_history = []
 
-        #     self.x_common = self.x_hat
-        #     self.P_common = self.P
-        #     self.last_share_index = 0
-        #     self.ledger = np.zeros((10000, len(MEAS_COLUMNS)))
+            self.ledger = []
+
+            self.x_common = self.x_hat
+            self.P_common = self.P
+            self.last_share_index = 0
             
-        #     self.x_nav_history = np.zeros(())
-        #     self.P_nav_history = np.zeros(())
+            self.x_nav_history = []
+            self.P_nav_history = []
 
     def propogate(self, position_process_noise, velocity_process_noise, delta_time=1.0):
 
         # Save the last estimate
-        self.x_hat_history.append( np.copy(self.x_hat))
-        self.P_history.append( np.copy(self.P))
+        if self.is_deltatier:
+            self.x_hat_history.append( np.copy(self.x_hat))
+            self.P_history.append( np.copy(self.P))
 
         # Create F and Q matrices
         F = np.eye(self.NUM_STATES)
@@ -167,12 +169,100 @@ class KalmanFilter:
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
         startx1 = self._get_agent_state_index(collecting_agent)
         startx2 = self._get_agent_state_index(collected_agent)
-        x1 = self.x_hat[startx1, 0]
-        y1 = self.x_hat[startx1 + 1, 0]
-        z1 = self.x_hat[startx1 + 2, 0]
-        x2 = self.x_hat[startx2, 0]
-        y2 = self.x_hat[startx2 + 1, 0]
-        z2 = self.x_hat[startx2 + 2, 0]
+        pred, H = KalmanFilter._predict_range_tracked(self.x_hat, startx1, startx2)
+
+        x = self.x_hat
+        P = self.P
+
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x = x + K * (meas_value - pred)
+        P = P - K @ H @ P
+
+        self.x_hat = x
+        self.P = P
+
+        # Add to ledger
+        type_ind = MEAS_TYPES_INDICES.index("sonar_range")
+        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+        self.ledger.append(meas_row)
+
+    # Either to an agent or landmark
+    def filter_azimuth_tracked(self, meas_value, R, collecting_agent, collected_agent): 
+        """
+        Meas value must be relative to x-axis because of linear filter
+        """
+        startx1 = self._get_agent_state_index(collecting_agent)
+        startx2 = self._get_agent_state_index(collected_agent)
+        pred, H = KalmanFilter._predict_azimuth_tracked(self.x_hat, startx1, startx2)
+
+        x = self.x_hat
+        P = self.P
+
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x = x + K * normalize_angle(meas_value - pred)
+        P = P - K @ H @ P
+
+        self.x_hat = x
+        self.P = P
+
+        # Add to ledger
+        type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
+        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+        self.ledger.append(meas_row)
+
+    # Used in minau project for psuedo-gps measurements from surface beacon
+    def filter_range_from_untracked(self, meas_value, R, position, collected_agent):
+        startx1 = self._get_agent_state_index(collected_agent)
+        pred, H = KalmanFilter._predict_range_from_untracked(self.x_hat, startx1, position)
+
+        x = self.x_hat
+        P = self.P
+
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x = x + K * (meas_value - pred)
+        P = P - K @ H @ P
+
+        self.x_hat = x
+        self.P = P
+
+        # Add to ledger
+        type_ind = MEAS_TYPES_INDICES.index("modem_range")
+        meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
+        self.ledger.append(meas_row)
+        
+    # Used in minau project for psuedo-gps measurements from surface beacon
+    def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent):
+        """
+        Meas value must be relative to x-axis because of linear filter
+        """
+        startx1 = self._get_agent_state_index(collected_agent)
+        pred, H = KalmanFilter._predict_azimuth_from_untracked( self.x_hat, startx1, position )
+
+        x = self.x_hat
+        P = self.P
+
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x = x + K * normalize_angle(meas_value - pred)
+        P = P - K @ H @ P
+
+        self.x_hat = x
+        self.P = P
+
+        # Add to ledger
+        type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
+        meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
+        self.ledger.append(meas_row)
+
+    @staticmethod
+    def _predict_range_tracked(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        z1 = x_hat[startx1 + 2, 0]
+        x2 = x_hat[startx2, 0]
+        y2 = x_hat[startx2 + 1, 0]
+        z2 = x_hat[startx2 + 2, 0]
 
         delta_pred = np.array([[x2 - x1], [y2 - y1], [z2 - z1]])
         pred = norm(delta_pred)
@@ -184,7 +274,7 @@ class KalmanFilter:
         drdz1 = (z1 - z2) / norm(delta_pred)
         drdz2 = (z2 - z1) / norm(delta_pred)
 
-        H = np.zeros((1, self.NUM_STATES))
+        H = np.zeros((1, NUM_STATES))
         H[0, startx1] = drdx1
         H[0, startx2] = drdx2
         H[0, startx1+1] = drdy1
@@ -192,29 +282,15 @@ class KalmanFilter:
         H[0, startx1+2] = drdz1
         H[0, startx2+2] = drdz2
 
-        x = self.x_hat
-        P = self.P
+        return pred, H
 
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * (meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
-
-        # TODO add to ledger...
-
-    # Either to an agent or landmark
-    def filter_azimuth_tracked(self, meas_value, R, collecting_agent, collected_agent): 
-        """
-        Meas value must be relative to x-axis because of linear filter
-        """
-        startx1 = self._get_agent_state_index(collecting_agent)
-        startx2 = self._get_agent_state_index(collected_agent)
-        x1 = self.x_hat[startx1, 0]
-        y1 = self.x_hat[startx1 + 1, 0]
-        x2 = self.x_hat[startx2, 0]
-        y2 = self.x_hat[startx2 + 1, 0]
+    @staticmethod
+    def _predict_azimuth_tracked(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        x2 = x_hat[startx2, 0]
+        y2 = x_hat[startx2 + 1, 0]
 
         delta_pred = np.array([[x2 - x1], [y2 - y1]])
         pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
@@ -223,28 +299,20 @@ class KalmanFilter:
         dadx2 = -(y2 - y1) / norm(delta_pred)**2
         dady1 = -(x2 - x1) / norm(delta_pred)**2
         dady2 = (x2 - x1) / norm(delta_pred)**2
-        H = np.zeros((1, self.NUM_STATES))
+        H = np.zeros((1, NUM_STATES))
         H[0, startx1] = dadx1
         H[0, startx2] = dadx2
         H[0, startx1+1] = dady1
         H[0, startx2+1] = dady2
 
-        x = self.x_hat
-        P = self.P
+        return pred, H
 
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
-
-    # Used in minau project for psuedo-gps measurements from surface beacon
-    def filter_range_from_untracked(self, meas_value, R, position, collected_agent):
-        startx1 = self._get_agent_state_index(collected_agent)
-        x1 = self.x_hat[startx1, 0]
-        y1 = self.x_hat[startx1 + 1, 0]
-        z1 = self.x_hat[startx1 + 2, 0]
+    @staticmethod
+    def _predict_range_from_untracked(x_hat, startx1, position):
+        NUM_STATES = x_hat.shape[0]
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        z1 = x_hat[startx1 + 2, 0]
         x2 = position[0]
         y2 = position[1]
         z2 = position[2]
@@ -256,29 +324,19 @@ class KalmanFilter:
         drdy1 = delta_pred[1] / norm(delta_pred)
         drdz1 = delta_pred[2] / norm(delta_pred)
         
-        H = np.zeros((1, self.NUM_STATES))
+        H = np.zeros((1, NUM_STATES))
         H[0, startx1] = drdx1
         H[0, startx1+1] = drdy1
         H[0, startx1+2] = drdz1
 
-        x = self.x_hat
-        P = self.P
+        return pred, H
 
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * (meas_value - pred)
-        P = P - K @ H @ P
+    @staticmethod
+    def _predict_azimuth_from_untracked(x_hat, startx1, position):
+        NUM_STATES = x_hat.shape[0]
 
-        self.x_hat = x
-        self.P = P
-        
-    # Used in minau project for psuedo-gps measurements from surface beacon
-    def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent):
-        """
-        Meas value must be relative to x-axis because of linear filter
-        """
-        startx1 = self._get_agent_state_index(collected_agent)
-        x1 = self.x_hat[startx1, 0]
-        y1 = self.x_hat[startx1 + 1, 0]
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
         x2 = position[0]
         y2 = position[1]
 
@@ -287,27 +345,29 @@ class KalmanFilter:
 
         dadx = -delta_pred[1,0] / norm(delta_pred)**2
         dady = delta_pred[0,0] / norm(delta_pred)**2
-        H = np.zeros((1, self.NUM_STATES))
+        H = np.zeros((1, NUM_STATES))
         H[0, startx1] = dadx
         H[0, startx1 + 1] = dady
 
-        x = self.x_hat
-        P = self.P
+        return pred, H
 
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
+    def pull_buffer(self, deltas, agent):
 
-        self.x_hat = x
-        self.P = P
+        # Pick the middle delta
+        delta = deltas[ int( len(deltas) / 2 ) ]
 
-    def pull_buffer(self):
+
+
         pass
 
-    def rx_buffer(self, buffer):
+    def rx_buffer(self, buffer, modem_loc):
         pass
 
     def intersect_strapdown(self, x_nav, P_nav, agent, fast_ci=False):
+
+        self.x_nav_history.append(x_nav)
+        self.P_nav_history.append(P_nav)
+
         # Go 8 -> 6
         rot_mat_nav = np.array([
             [1, 0, 0, 0, 0, 0, 0, 0],
@@ -326,9 +386,9 @@ class KalmanFilter:
         P_agent = rot_mat @ self.P @ rot_mat.T
 
         if fast_ci:
-            mean_result, cov_result = self._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+            mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
         else:
-            mean_result, cov_result = self._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+            mean_result, cov_result = KalmanFilter._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
 
         # PSCI for tracking filter
         D_inv = inv(cov_result) - inv(P_agent)
@@ -380,6 +440,7 @@ class KalmanFilter:
         c_bar = Pcc.dot( omega_optimal*Pa_inv.dot(xa) + (1-omega_optimal)*Pb_inv.dot(xb))
         return c_bar.reshape(-1,1), Pcc
 
+    @staticmethod
     def _fast_covariance_intersection(xa, Pa, xb, Pb):
         Pa_inv = np.linalg.inv(Pa)
         Pb_inv = np.linalg.inv(Pb)
