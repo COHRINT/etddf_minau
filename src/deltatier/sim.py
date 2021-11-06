@@ -178,11 +178,18 @@ for loop_num in range(NUM_LOOPS):
         kf = blue_filters[a]
         kf.propogate(q_perceived_tracking_pos, q_perceived_tracking_vel)
         depth_est = x_nav[2,0]
-        kf.filter_artificial_depth(depth_est)
+        kf.filter_artificial_depth(depth_est) # TODO maybe replicate the depth if its more certain than x
         take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
 
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth)
+
+    # Intersect estimates
+    for a in range(BLUE_NUM):
+        x_nav, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
+        kf = blue_filters[a]
+        x_nav, P_nav = kf.intersect_strapdown(x_nav, P_nav, a)
+        x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
     # Record x_navs_history, P_navs_history
     x_navs_history[:, loop_num] = np.reshape(x_navs, -1, "F")

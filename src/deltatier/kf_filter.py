@@ -2,6 +2,8 @@ import numpy as np
 from numpy.linalg import inv, norm
 from normalize_angle import normalize_angle
 import itertools
+import scipy
+import scipy.optimize
 
 """
 Ledgers
@@ -305,7 +307,88 @@ class KalmanFilter:
     def rx_buffer(self, buffer):
         pass
 
-    def intersect_strapdown(self, x_nav, P_nav, fast_ci=False):
+    def intersect_strapdown(self, x_nav, P_nav, agent, fast_ci=False):
+        # Go 8 -> 6
+        rot_mat_nav = np.array([
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0]]
+        )
+        nav_est_x = rot_mat_nav @ x_nav
+        nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+
+        rot_mat = np.zeros((6, self.x_hat.shape[0]))
+        rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
+        x_hat_agent = rot_mat @ self.x_hat
+        P_agent = rot_mat @ self.P @ rot_mat.T
+
+        if fast_ci:
+            mean_result, cov_result = self._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+        else:
+            mean_result, cov_result = self._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+
+        # PSCI for tracking filter
+        D_inv = inv(cov_result) - inv(P_agent)
+        D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
+        D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
+        D_inv_d_zeros = rot_mat.T @ D_inv_d
+        P_new = inv( inv(self.P) + D_inv_zeros)
+        self.x_hat = P_new @ (inv(self.P) @ self.x_hat + D_inv_d_zeros )
+        self.P = P_new
+
+        # PSCI for navigation Filter (just X,Y)
+        rot_mat = np.zeros((2, 8))
+        rot_mat[:2,:2] = np.eye(2)
+        mean_result = mean_result[:2, 0].reshape(-1,1)
+        cov_result = cov_result[:2, :2]
+        x_nav_position = rot_mat @ x_nav
+        P_nav_position = rot_mat @ P_nav @ rot_mat.T
+        
+        D_inv = inv(cov_result) - inv(P_nav_position)
+        D_inv_d = inv(cov_result) @ mean_result - inv(P_nav_position) @ x_nav_position
+        D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
+        D_inv_d_zeros = rot_mat.T @ D_inv_d
+        P_nav_new = inv( inv(P_nav) + D_inv_zeros )
+        x_nav = P_nav_new @ ( inv(P_nav) @ x_nav + D_inv_d_zeros )
+        P_nav = P_nav_new
+
+        return x_nav, P_nav
+
+    @staticmethod
+    def _covariance_intersection(xa, Pa, xb, Pb):
+        """Runs covariance intersection on the two estimates A and B
+        Arguments:
+            xa {np.ndarray} -- mean of A
+            Pa {np.ndarray} -- covariance of A
+            xb {np.ndarray} -- mean of B
+            Pb {np.ndarray} -- covariance of B
+        
+        Returns:
+            c_bar {np.ndarray} -- intersected estimate
+            Pcc {np.ndarray} -- intersected covariance
+        """
+        Pa_inv = np.linalg.inv(Pa)
+        Pb_inv = np.linalg.inv(Pb)
+
+        fxn = lambda omega: np.trace(np.linalg.inv(omega*Pa_inv + (1-omega)*Pb_inv))
+        omega_optimal = scipy.optimize.minimize_scalar(fxn, bounds=(0,1), method="bounded").x
+
+        Pcc = np.linalg.inv(omega_optimal*Pa_inv + (1-omega_optimal)*Pb_inv)
+        c_bar = Pcc.dot( omega_optimal*Pa_inv.dot(xa) + (1-omega_optimal)*Pb_inv.dot(xb))
+        return c_bar.reshape(-1,1), Pcc
+
+    def _fast_covariance_intersection(xa, Pa, xb, Pb):
+        Pa_inv = np.linalg.inv(Pa)
+        Pb_inv = np.linalg.inv(Pb)
+
+        omega_optimal = np.trace(Pb) / (np.trace(Pa) + np.trace(Pb))
+
+        Pcc = np.linalg.inv(omega_optimal*Pa_inv + (1-omega_optimal)*Pb_inv)
+        c_bar = Pcc.dot( omega_optimal*Pa_inv.dot(xa) + (1-omega_optimal)*Pb_inv.dot(xb))
+        return c_bar.reshape(-1,1), Pcc
         pass
 
     def _get_agent_state_index(self, agent_num):
