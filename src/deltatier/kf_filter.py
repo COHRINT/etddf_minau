@@ -169,17 +169,7 @@ class KalmanFilter:
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
         startx1 = self._get_agent_state_index(collecting_agent)
         startx2 = self._get_agent_state_index(collected_agent)
-        pred, H = KalmanFilter._predict_range_tracked(self.x_hat, startx1, startx2)
-
-        x = self.x_hat
-        P = self.P
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * (meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
+        self.x_hat, self.P = KalmanFilter._fuse_range_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("sonar_range")
@@ -193,17 +183,7 @@ class KalmanFilter:
         """
         startx1 = self._get_agent_state_index(collecting_agent)
         startx2 = self._get_agent_state_index(collected_agent)
-        pred, H = KalmanFilter._predict_azimuth_tracked(self.x_hat, startx1, startx2)
-
-        x = self.x_hat
-        P = self.P
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
+        self.x_hat, self.P = KalmanFilter._fuse_azimuth_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
@@ -213,17 +193,7 @@ class KalmanFilter:
     # Used in minau project for psuedo-gps measurements from surface beacon
     def filter_range_from_untracked(self, meas_value, R, position, collected_agent):
         startx1 = self._get_agent_state_index(collected_agent)
-        pred, H = KalmanFilter._predict_range_from_untracked(self.x_hat, startx1, position)
-
-        x = self.x_hat
-        P = self.P
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * (meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
+        self.x_hat, self.P = KalmanFilter._fuse_range_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("modem_range")
@@ -236,17 +206,7 @@ class KalmanFilter:
         Meas value must be relative to x-axis because of linear filter
         """
         startx1 = self._get_agent_state_index(collected_agent)
-        pred, H = KalmanFilter._predict_azimuth_from_untracked( self.x_hat, startx1, position )
-
-        x = self.x_hat
-        P = self.P
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x = x + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
-
-        self.x_hat = x
-        self.P = P
+        self.x_hat, self.P = KalmanFilter._fuse_azimuth_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
@@ -254,7 +214,7 @@ class KalmanFilter:
         self.ledger.append(meas_row)
 
     @staticmethod
-    def _predict_range_tracked(x_hat, startx1, startx2):
+    def _fuse_range_tracked(x_hat, P, startx1, startx2, meas_value, R):
         NUM_STATES = x_hat.shape[0]
 
         x1 = x_hat[startx1, 0]
@@ -282,10 +242,14 @@ class KalmanFilter:
         H[0, startx1+2] = drdz1
         H[0, startx2+2] = drdz2
 
-        return pred, H
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x_hat = x_hat + K * (meas_value - pred)
+        P = P - K @ H @ P
+
+        return x_hat, P
 
     @staticmethod
-    def _predict_azimuth_tracked(x_hat, startx1, startx2):
+    def _fuse_azimuth_tracked(x_hat, P, startx1, startx2, meas_value, R):
         NUM_STATES = x_hat.shape[0]
         x1 = x_hat[startx1, 0]
         y1 = x_hat[startx1 + 1, 0]
@@ -305,10 +269,14 @@ class KalmanFilter:
         H[0, startx1+1] = dady1
         H[0, startx2+1] = dady2
 
-        return pred, H
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x_hat = x_hat + K * normalize_angle(meas_value - pred)
+        P = P - K @ H @ P
+
+        return x_hat, P
 
     @staticmethod
-    def _predict_range_from_untracked(x_hat, startx1, position):
+    def _fuse_range_from_untracked(x_hat, P, startx1, position, meas_value, R):
         NUM_STATES = x_hat.shape[0]
         x1 = x_hat[startx1, 0]
         y1 = x_hat[startx1 + 1, 0]
@@ -329,10 +297,14 @@ class KalmanFilter:
         H[0, startx1+1] = drdy1
         H[0, startx1+2] = drdz1
 
-        return pred, H
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x_hat = x_hat + K * (meas_value - pred)
+        P = P - K @ H @ P
+
+        return x_hat, P
 
     @staticmethod
-    def _predict_azimuth_from_untracked(x_hat, startx1, position):
+    def _fuse_azimuth_from_untracked(x_hat, P, startx1, position, meas_value, R):
         NUM_STATES = x_hat.shape[0]
 
         x1 = x_hat[startx1, 0]
@@ -349,7 +321,11 @@ class KalmanFilter:
         H[0, startx1] = dadx
         H[0, startx1 + 1] = dady
 
-        return pred, H
+        K = P @ H.T @ inv(H @ P @ H.T + R)
+        x_hat = x_hat + K * normalize_angle(meas_value - pred)
+        P = P - K @ H @ P
+
+        return x_hat, P
 
     def pull_buffer(self, deltas, agent):
 
