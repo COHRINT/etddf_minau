@@ -44,10 +44,12 @@ TOTAL_STATES = STATES * NUM_AGENTS
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
 NUM_LOOPS = 2000
 MAP_DIM = 20 # Square with side length
-PROB_DETECTION = 0.8
+PROB_DETECTION = 1.0
 SONAR_RANGE = 20.0
 MODEM_LOCATION = [11,11,0]
-DELTA_RANGE = list(range(100))
+DELTA_RANGE = list(range(1,256))
+DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
+BUFFER_SIZE = 32
 
 # Noise Params
 q = 0.05 # std
@@ -183,7 +185,9 @@ for loop_num in range(NUM_LOOPS):
         take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
 
     for a in range(BLUE_NUM):
-        modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, w_perceived_modem_range, w_perceived_modem_azimuth, DELTA_RANGE)
+        modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, \
+            w_perceived_modem_range, w_perceived_modem_azimuth, q_perceived_tracking_pos, \
+            q_perceived_tracking_vel, BUFFER_SIZE, DELTA_RANGE, DELTA_DICT)
 
     # Intersect estimates
     for a in range(BLUE_NUM):

@@ -7,7 +7,9 @@ This file manages the modem scheduler
 Start with just taking a global modem measurement of all agents on every time cycle
 """
 
-def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location, w, w_perceived_modem_range, w_perceived_modem_azimuth, delta_range):
+def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location, w, \
+    w_perceived_modem_range, w_perceived_modem_azimuth, position_process_noise, \
+    velocity_process_noise, buffer_size, delta_range, delta_dict):
 
     ping_delay = 3
     broadcast_delay = 4
@@ -50,9 +52,10 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
     else: # Check if an agent is sharing
         pass
         # This agent is sharing
-        # if agent_share_times[agent] == current_iter:
-        #     buffer, delta = kf.pull_buffer(delta_range)
+        if agent_share_times[agent] == current_iter:
+            mult, buffer, explicit_cnt, implicit_cnt = kf.pull_buffer(delta_range, delta_dict, position_process_noise, velocity_process_noise, modem_location, buffer_size)
 
+            pass
             # TODO rx_buffer
 
     pass
