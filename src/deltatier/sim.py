@@ -21,7 +21,7 @@ from copy import deepcopy
 
 from set_estimate_nav import set_estimate_nav
 
-# np.random.seed(0)
+# np.random.seed(4)
 np.set_printoptions(precision=2)
 np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
@@ -42,31 +42,35 @@ STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
-NUM_LOOPS = 2000
+NUM_LOOPS = 1000
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 1.0
-SONAR_RANGE = 20.0
+SONAR_RANGE = 30.0
 MODEM_LOCATION = [11,11,0]
 DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
 BUFFER_SIZE = 32
 
 # Noise Params
-q = 0.05 # std
+q_pos = 0.01 # std
+q_theta = 0.01
+# q_pos = 0.0 # std
+# q_theta = 0.0
+
 w = 0.1 # std
 w_gps = 1.0 # std
-q_perceived = q*q
+q_nav_pos = 0.005
+q_nav_vel = 0.1
 w_perceived = w*w
 w_gps_perceived = w_gps*w_gps
 
-q_perceived_tracking_pos = 0.05
-q_perceived_tracking_vel = 0.01
-w_perceived_nonlinear = 0.2
-w_perceived_modem_range = 0.1
-w_perceived_modem_azimuth = w_perceived_nonlinear
+q_perceived_tracking_pos = 0.02
+q_perceived_tracking_vel = 0.0005
 
-w_perceived_sonar_range = 0.1
-w_perceived_sonar_azimuth = w_perceived_nonlinear
+w_perceived_modem_range = 0.3
+w_perceived_modem_azimuth = 0.2
+w_perceived_sonar_range = 0.3
+w_perceived_sonar_azimuth = 0.2
 
 # Initialize x_gt
 x_gt = np.zeros((TOTAL_STATES,1))
@@ -86,13 +90,6 @@ P_navs = np.matlib.repmat(P, 1, NUM_AGENTS)
 
 x_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS))
 P_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS*STATES))
-
-Q = np.eye(TOTAL_STATES)
-for a in range(NUM_AGENTS):
-    Q[STATES*a+4, STATES*a+4] = 0.1
-    Q[STATES*a+5, STATES*a+5] = 0.1
-    Q[STATES*a+6, STATES*a+6] = 0.1
-    Q[STATES*a+7, STATES*a+7] = 0.1
 
 U = np.zeros((STATES,2))
 U[4,0] = 1
@@ -149,8 +146,9 @@ for loop_num in range(NUM_LOOPS):
         deltav = target_vel - vel
         control = np.reshape( U @ deltav, (STATES,1) )
 
-        x_gt_agent = np.dot(F, x_gt_agent) + control #+ Q[:STATES,:STATES] @ np.random.normal(0.0, q, (STATES,1))
-        # print(Q[:STATES,:STATES] @ np.random.normal(0.0, q, (STATES,1)))
+        Q = np.random.normal(0.0, [q_pos]*2 +[0] + [q_theta] + [0]*4)
+        x_gt_agent = np.dot(F, x_gt_agent) + control
+        x_gt_agent += Q.reshape(-1,1)
         x_gt[STATES*a : STATES*(a+1), 0] = x_gt_agent[:,0]
 
     x_gt = normalize_state(x_gt, NUM_AGENTS, STATES)
@@ -166,7 +164,8 @@ for loop_num in range(NUM_LOOPS):
         F[2,6] = 1
         F[3,7] = 1
         x_nav = F @ x_nav
-        P_nav = F @ P_nav @ F.T + q_perceived * Q[:STATES,:STATES]
+        Q_nav = [q_nav_pos]*4 + [q_nav_vel]*4
+        P_nav = F @ P_nav @ F.T + np.diag(Q_nav)
         x_nav = normalize_state(x_nav, 1, STATES)
 
         # Nav Filter Correction
@@ -180,8 +179,6 @@ for loop_num in range(NUM_LOOPS):
         # Update Tracking Filter
         kf = blue_filters[a]
         kf.propogate(q_perceived_tracking_pos, q_perceived_tracking_vel)
-        depth_est = x_nav[2,0]
-        kf.filter_artificial_depth(depth_est) # TODO maybe replicate the depth if its more certain than x
         take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
 
     for a in range(BLUE_NUM):
@@ -193,7 +190,7 @@ for loop_num in range(NUM_LOOPS):
     for a in range(BLUE_NUM):
         x_nav, P_nav = get_estimate_nav(x_navs, P_navs, a, STATES)
         kf = blue_filters[a]
-        x_nav, P_nav = kf.intersect_strapdown(x_nav, P_nav, a)
+        x_nav, P_nav = kf.intersect_strapdown(x_nav, P_nav, a, share_depth=True)
         x_navs, P_navs = set_estimate_nav(x_nav, P_nav, x_navs, P_navs, a, STATES)
 
     # Record x_navs_history, P_navs_history
@@ -203,9 +200,9 @@ for loop_num in range(NUM_LOOPS):
         P_navs_history[STATES*a:STATES*(a+1), STATES*loop_num: STATES*(loop_num+1)] = P_nav
 
 # print(P_navs)
-# plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)
+plot_error_nav(x_navs_history, P_navs_history, x_gt_history, STATES, 0)
 
 agent_to_plot_kf = blue_filters[AGENT_TO_PLOT]
-x_hat_history_lst = agent_to_plot_kf.x_hat_history
-P_history_lst = agent_to_plot_kf.P_history
+x_hat_history_lst = agent_to_plot_kf.x_hat_history_prior
+P_history_lst = agent_to_plot_kf.P_history_prior
 plot_error_track(x_gt_history, x_hat_history_lst, P_history_lst, STATES, BLUE_NUM, RED_NUM)

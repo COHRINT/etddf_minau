@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import norm
+from copy import deepcopy
 
 """
 This file manages the modem scheduler
@@ -24,8 +25,6 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
 
     current_iter = np.mod(loop_num, total_time)
 
-    # TODO change
-    # current_iter = ping_time
     kf = kfs[agent]
 
     # Surface broadcasts positions
@@ -48,14 +47,23 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
 
             kf.filter_range_from_untracked(range_meas, w_perceived_modem_range, modem_location, b)
             kf.filter_azimuth_from_untracked(azimuth_meas, w_perceived_modem_azimuth, modem_location, b)
+            
+            # TODO fix catch_up()
+            # print("Catching up...")
+            # x_hat_prior = deepcopy(kf.x_hat)
+            # kf.catch_up(loop_num - 8, modem_location, position_process_noise, velocity_process_noise, b, fast_ci=False)
+            # x_hat_post_catchup = deepcopy(kf.x_hat)
+            # assert np.array_equal(x_hat_prior, x_hat_post_catchup)
         
     else: # Check if an agent is sharing
-        pass
+
         # This agent is sharing
         if agent_share_times[agent] == current_iter:
+            print("Sharing!")
             mult, buffer, explicit_cnt, implicit_cnt = kf.pull_buffer(delta_range, delta_dict, position_process_noise, velocity_process_noise, modem_location, buffer_size)
 
-            pass
-            # TODO rx_buffer
-
-    pass
+            for b in range(BLUE_NUM):
+                if b == agent: # Don't share with ourself
+                    continue
+                kf_b = kfs[b]
+                kf_b.rx_buffer(mult, buffer, delta_dict, modem_location, position_process_noise, velocity_process_noise, b, fast_ci=False)

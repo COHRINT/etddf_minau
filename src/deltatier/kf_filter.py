@@ -1,3 +1,4 @@
+from copy import deepcopy
 import numpy as np
 from numpy.linalg import inv, norm
 from normalize_angle import normalize_angle
@@ -8,11 +9,11 @@ from scipy.stats import norm as normaldist
 
 """
 Ledgers
-- x_nav_history
-- P_nav_history
+- x_nav_history_prior
+- P_nav_history_prior
 - measurement
-- x_history
-- P_history
+- x_hat_history_prior
+- P_history_prior
 
 States
 - x_common
@@ -96,8 +97,8 @@ class KalmanFilter:
 
         self.is_deltatier = is_deltatier
         if self.is_deltatier:
-            self.x_hat_history = []
-            self.P_history = []
+            self.x_hat_history_prior = [] # x_hat at index is estimate prior to index filtering step
+            self.P_history_prior = []
 
             self.ledger = []
 
@@ -111,25 +112,25 @@ class KalmanFilter:
             """
             self.last_share_index = 0
             
-            self.x_nav_history = []
-            self.P_nav_history = []
+            self.x_nav_history_prior = []
+            self.P_nav_history_prior = []
 
     def propogate(self, position_process_noise, velocity_process_noise):
         """
         Only 1Hz update is supported for DeltaTier
         """
+        self.index += 1
 
         # Save the last estimate
         if self.is_deltatier:
-            self.x_hat_history.append( np.copy(self.x_hat))
-            self.P_history.append( np.copy(self.P))
+            self.x_hat_history_prior.append( np.copy(self.x_hat))
+            self.P_history_prior.append( np.copy(self.P))
 
         self.x_hat, self.P = KalmanFilter._propogate( \
             self.x_hat, self.P, position_process_noise, \
             velocity_process_noise, self.BLUE_NUM, self.RED_NUM, \
             self.LANDMARK_NUM)
 
-        self.index += 1
         return self.index
 
     @staticmethod
@@ -153,38 +154,48 @@ class KalmanFilter:
 
         return x_hat, P
 
-    def filter_artificial_depth(self, depth, R=1e-2):
+    @staticmethod
+    def _filter_artificial_depth_static(x_hat, P, depth, BLUE_NUM, RED_NUM, LANDMARK_NUM, R=1e-2):
+
+        num_states = x_hat.shape[0]
+
+        for b in range(BLUE_NUM + RED_NUM):
+            H = np.zeros((1, num_states))
+            H[0, 6*b + 2] = 1
+
+            x = x_hat
+            P = P
+
+            K = P @ H.T @ inv(H @ P @ H.T + R)
+            x = x + K @ (depth - H @ x)
+            P = P - K @ H @ P
+
+            x_hat = x
+            P = P
+
+        num_dynamic_states = 6*(BLUE_NUM + RED_NUM)
+        for l in range(LANDMARK_NUM):
+            H = np.zeros((1, num_states))
+            H[0, num_dynamic_states + 3*l + 2] = 1
+
+            x = x_hat
+            P = P
+
+            K = P @ H.T @ inv(H @ P @ H.T + R)
+            x = x + K @ (depth - H @ x)
+            P = P - K @ H @ P
+
+            x_hat = x
+            P = P
+
+        return x_hat, P
+        
+    def _filter_artificial_depth(self, depth, R=1e-2):
         """
         Approximate the environment as 2D and fuse a certain depth for all agents/landmarks
         """
-        for b in range(self.BLUE_NUM + self.RED_NUM):
-            H = np.zeros((1, self.NUM_STATES))
-            H[0, 6*b + 2] = 1
-
-            x = self.x_hat
-            P = self.P
-
-            K = P @ H.T @ inv(H @ P @ H.T + R)
-            x = x + K @ (depth - H @ x)
-            P = P - K @ H @ P
-
-            self.x_hat = x
-            self.P = P
-
-        num_dynamic_states = 6*(self.BLUE_NUM + self.RED_NUM)
-        for l in range(self.LANDMARK_NUM):
-            H = np.zeros((1, self.NUM_STATES))
-            H[0, num_dynamic_states + 3*l + 2] = 1
-
-            x = self.x_hat
-            P = self.P
-
-            K = P @ H.T @ inv(H @ P @ H.T + R)
-            x = x + K @ (depth - H @ x)
-            P = P - K @ H @ P
-
-            self.x_hat = x
-            self.P = P
+        self.x_hat, self.P = KalmanFilter._filter_artificial_depth_static(
+            self.x_hat, self.P, depth, self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R)
 
     # Either to an agent or landmark
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
@@ -212,9 +223,15 @@ class KalmanFilter:
         self.ledger.append(meas_row)
 
     # Used in minau project for psuedo-gps measurements from surface beacon
-    def filter_range_from_untracked(self, meas_value, R, position, collected_agent):
+    def filter_range_from_untracked(self, meas_value, R, position, collected_agent, index=None):
+        """
+        For OOSM problem, add index to be fused at
+        """
         startx1 = self._get_agent_state_index(collected_agent)
-        self.x_hat, self.P = KalmanFilter._fuse_range_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
+
+        # Fuse measurement now if not OOSM
+        if index is None or index == self.index:
+            self.x_hat, self.P = KalmanFilter._fuse_range_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("modem_range")
@@ -223,12 +240,16 @@ class KalmanFilter:
         self.common_ledger.append(meas_row)
         
     # Used in minau project for psuedo-gps measurements from surface beacon
-    def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent):
+    def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent, index=None):
         """
         Meas value must be relative to x-axis because of linear filter
+        For OOSM problem, add index to be fused at
         """
         startx1 = self._get_agent_state_index(collected_agent)
-        self.x_hat, self.P = KalmanFilter._fuse_azimuth_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
+
+        # Fuse measurement now if not OOSM
+        if index is None or index == self.index:
+            self.x_hat, self.P = KalmanFilter._fuse_azimuth_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
         type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
@@ -374,8 +395,6 @@ class KalmanFilter:
         x_common_start = self.x_common
         P_common_start = self.P_common
 
-        self.last_share_index = 0
-
         ledger_mat = KalmanFilter._get_ledger_mat(self.ledger)
 
         while True:
@@ -472,7 +491,9 @@ class KalmanFilter:
                             share_buffer.append( meas_row )
                     else:
                         raise ValueError("Unrecognized measurement type: " + str(meas_type))
-                
+
+            if not share_buffer: # We didn't take any shareable measurements!
+                return mults[0], [], 0, 0
             # Check if share_buffer overflowed
             share_buffer_mat = KalmanFilter._get_ledger_mat(share_buffer)
             cost, explicit_cnt, implicit_cnt = self._get_buffer_size( share_buffer_mat )
@@ -524,6 +545,7 @@ class KalmanFilter:
         """
         Calculates the number of explicit and implict measurements
         """
+
         index_col = MEAS_COLUMNS.index("type")
         num_explicit, num_implicit = 0, 0
 
@@ -565,18 +587,279 @@ class KalmanFilter:
         index_col = MEAS_COLUMNS.index("index")
         return ledger_mat[ np.where(ledger_mat[:,index_col] == index)]
 
-    def rx_buffer(self, buffer, modem_loc):
+    def rx_buffer(self, mult, buffer, delta_dict, modem_loc, position_process_noise, velocity_process_noise, agent, fast_ci=False):
         """
         Ignore artificially inserting depth in the rewind...
         """
-        pass
+        # Merge x_common with buffer so modem information shared
+        buffer.extend(self.common_ledger)
 
-        # Merge x_common with buffer & remove duplicate rows. Should leave single modem update
+        ledger_mat = KalmanFilter._get_ledger_mat(self.ledger)
+        buffer_mat = KalmanFilter._get_ledger_mat(buffer)
 
-    def intersect_strapdown(self, x_nav, P_nav, agent, fast_ci=False):
+        index_col = MEAS_COLUMNS.index("index")
+        last_share_index = int(buffer_mat.max(axis=0)[index_col])
 
-        self.x_nav_history.append(x_nav)
-        self.P_nav_history.append(P_nav)
+        # THEN add the fusion. This is actually a simpler function than pull_buffer()
+
+        x_common = self.x_common
+        P_common = self.P_common
+        x_hat = self.x_hat_history_prior[self.last_share_index]
+        P = self.P_history_prior[self.last_share_index]
+
+        # Loop through all time indices
+        for index in range(self.last_share_index, self.index):
+
+            x_common, P_common = KalmanFilter._propogate(x_common, P_common, \
+                position_process_noise, velocity_process_noise, self.BLUE_NUM, self.RED_NUM,\
+                self.LANDMARK_NUM)
+            x_hat, P = KalmanFilter._propogate(x_hat, P, \
+                position_process_noise, velocity_process_noise, self.BLUE_NUM, self.RED_NUM,\
+                self.LANDMARK_NUM)
+
+            x_common_bar = deepcopy(x_common)
+            P_common_bar = deepcopy(P_common)
+            x_hat_bar = deepcopy(x_hat)
+            P_bar = deepcopy(P)
+
+            # Shared Buffer First!
+            measurements = self._get_measurements_at_time(buffer_mat, index)
+            for mi in range(measurements.shape[0]):
+                meas = measurements[mi,:]
+                meas_type = MEAS_TYPES_INDICES[ int(meas[MEAS_COLUMNS.index("type")]) ]
+                startx1 = int(meas[MEAS_COLUMNS.index("startx1")])
+                startx2 = int(meas[MEAS_COLUMNS.index("startx2")])
+                data = meas[MEAS_COLUMNS.index("data")]
+                R = meas[MEAS_COLUMNS.index("R")]
+
+                if meas_type == "modem_range":
+                    x_common, P_common = KalmanFilter._fuse_range_from_untracked( 
+                        x_common, P_common, startx1, modem_loc, data, R)
+                elif meas_type == "modem_azimuth":
+                    x_common, P_common = KalmanFilter._fuse_azimuth_from_untracked(
+                        x_common, P_common, startx1, modem_loc, data, R)
+                elif meas_type == "sonar_range":
+
+                    x_common, P_common = KalmanFilter._fuse_range_tracked(
+                        x_common, P_common, startx1, startx2, data, R)
+                    x_hat, P = KalmanFilter._fuse_range_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+                elif meas_type == "sonar_range_implicit":
+                    delta = delta_dict["sonar_range"] * mult
+
+                    # Main Estimate
+                    pred, H = KalmanFilter._predict_range(x_common, startx1, startx2)
+                    x_ref = x_common
+                    h_x_hat = pred
+                    h_x_bar, H_ = KalmanFilter._predict_range(x_common_bar, startx1, startx2)
+                    h_x_ref, H_ = KalmanFilter._predict_range(x_ref, startx1, startx2)
+                    x_common, P_common = KalmanFilter._implicit_fuse(
+                        x_common_bar, P_common_bar, x_common, P_common, 
+                        x_ref, H, R, delta, 
+                        h_x_hat, h_x_bar, h_x_ref, False)
+                    np.linalg.matrix_rank(P_common) # Just check matrix isn't singular
+
+                    # Main Estimate
+                    pred, H = KalmanFilter._predict_range(x_hat, startx1, startx2)
+                    x_ref = x_common
+                    h_x_hat = pred
+                    h_x_bar, H_ = KalmanFilter._predict_range(x_hat_bar, startx1, startx2)
+                    h_x_ref, H_ = KalmanFilter._predict_range(x_ref, startx1, startx2)
+                    x_hat, P = KalmanFilter._implicit_fuse(
+                        x_hat_bar, P_bar, x_hat, P, 
+                        x_ref, H, R, delta, 
+                        h_x_hat, h_x_bar, h_x_ref, False)
+                    np.linalg.matrix_rank(P) # Just check matrix isn't singular
+                    
+                elif meas_type == "sonar_azimuth":
+                    x_common, P_common = KalmanFilter._fuse_azimuth_tracked(
+                        x_common, P_common, startx1, startx2, data, R)
+                    x_hat, P = KalmanFilter._fuse_azimuth_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+
+                elif meas_type == "sonar_azimuth_implicit":
+                    delta = delta_dict["sonar_azimuth"] * mult
+
+                    # Main Estimate
+                    pred, H = KalmanFilter._predict_azimuth(x_common, startx1, startx2)
+                    x_ref = x_common
+                    h_x_hat = pred
+                    h_x_bar, H_ = KalmanFilter._predict_azimuth(x_common_bar, startx1, startx2)
+                    h_x_ref, H_ = KalmanFilter._predict_azimuth(x_ref, startx1, startx2)
+                    x_common, P_common = KalmanFilter._implicit_fuse(
+                        x_common_bar, P_common_bar, x_common, P_common, 
+                        x_ref, H, R, delta, 
+                        h_x_hat, h_x_bar, h_x_ref, True)
+                    np.linalg.matrix_rank(P_common) # Just check matrix isn't singular
+
+                    # Main Estimate
+                    pred, H = KalmanFilter._predict_azimuth(x_hat, startx1, startx2)
+                    x_ref = x_common
+                    h_x_hat = pred
+                    h_x_bar, H_ = KalmanFilter._predict_azimuth(x_hat_bar, startx1, startx2)
+                    h_x_ref, H_ = KalmanFilter._predict_azimuth(x_ref, startx1, startx2)
+                    x_hat, P = KalmanFilter._implicit_fuse(
+                        x_hat_bar, P_bar, x_hat, P, 
+                        x_ref, H, R, delta, 
+                        h_x_hat, h_x_bar, h_x_ref, True)
+                    np.linalg.matrix_rank(P) # Just check matrix isn't singular
+
+                else:
+                    raise ValueError("Unrecognized measurement type: " + str(meas_type))
+
+            # end for measurements
+            # Main Filter measurements
+            measurements = self._get_measurements_at_time(ledger_mat, index)
+            for mi in range(measurements.shape[0]):
+                meas = measurements[mi,:]
+                meas_type = MEAS_TYPES_INDICES[ int(meas[MEAS_COLUMNS.index("type")]) ]
+                startx1 = int(meas[MEAS_COLUMNS.index("startx1")])
+                startx2 = int(meas[MEAS_COLUMNS.index("startx2")])
+                data = meas[MEAS_COLUMNS.index("data")]
+                R = meas[MEAS_COLUMNS.index("R")]
+
+                if meas_type == "modem_range":
+                    x_hat, P = KalmanFilter._fuse_range_from_untracked( 
+                        x_hat, P, startx1, modem_loc, data, R)
+                elif meas_type == "modem_azimuth":
+                    x_hat, P = KalmanFilter._fuse_azimuth_from_untracked(
+                        x_hat, P, startx1, modem_loc, data, R)
+                elif meas_type == "sonar_range":
+                    x_hat, P = KalmanFilter._fuse_range_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+                elif meas_type == "sonar_azimuth":
+                    x_hat, P = KalmanFilter._fuse_azimuth_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+                else:
+                    raise ValueError("Unrecognized measurement type: " + str(meas_type))
+            
+            # Intersect with navigation filter
+            if len(self.x_nav_history_prior) > index:
+                x_nav = self.x_nav_history_prior[index]
+                P_nav = self.P_nav_history_prior[index]
+                x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
+                # Go 8 -> 6
+                rot_mat_nav = np.array([
+                    [1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 0]]
+                )
+                nav_est_x = rot_mat_nav @ x_nav
+                nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+
+                rot_mat = np.zeros((6, x_hat.shape[0]))
+                rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
+                x_hat_agent = rot_mat @ x_hat
+                P_agent = rot_mat @ P @ rot_mat.T
+
+                if fast_ci:
+                    mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+                else:
+                    mean_result, cov_result = KalmanFilter._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+
+                # PSCI for tracking filter
+                D_inv = inv(cov_result) - inv(P_agent)
+                D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
+                D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
+                D_inv_d_zeros = rot_mat.T @ D_inv_d
+                P_new = inv( inv(P) + D_inv_zeros)
+                x_hat = P_new @ (inv(P) @ x_hat + D_inv_d_zeros )
+                P = P_new
+
+        # end for index
+        self.x_hat = x_hat
+        self.P = P
+        self.x_common = x_common
+        self.P_common = P_common
+        self.last_share_index = last_share_index
+    
+    def catch_up(self, start_index, modem_loc, position_process_noise, velocity_process_noise, agent, fast_ci=False):
+        """
+        In the case of OOSM catch the current filter up to the current timestep
+        """
+        raise NotImplementedError("There is a bug somewhere in the rewind CI with nav filter")
+        x_hat = deepcopy(self.x_hat_history_prior[start_index])
+        P = deepcopy(self.P_history_prior[start_index])
+
+        ledger_mat = KalmanFilter._get_ledger_mat(self.ledger)
+        for index in range(start_index, self.index + 1):
+            x_hat, P = KalmanFilter._propogate(x_hat, P, \
+                position_process_noise, velocity_process_noise, self.BLUE_NUM, self.RED_NUM,\
+                self.LANDMARK_NUM)
+            measurements = self._get_measurements_at_time(ledger_mat, index)
+            for mi in range(measurements.shape[0]):
+                meas = measurements[mi,:]
+                meas_type = MEAS_TYPES_INDICES[ int(meas[MEAS_COLUMNS.index("type")]) ]
+                startx1 = int(meas[MEAS_COLUMNS.index("startx1")])
+                startx2 = int(meas[MEAS_COLUMNS.index("startx2")])
+                data = meas[MEAS_COLUMNS.index("data")]
+                R = meas[MEAS_COLUMNS.index("R")]
+
+                if meas_type == "modem_range":
+                    x_hat, P = KalmanFilter._fuse_range_from_untracked( 
+                        x_hat, P, startx1, modem_loc, data, R)
+                elif meas_type == "modem_azimuth":
+                    x_hat, P = KalmanFilter._fuse_azimuth_from_untracked(
+                        x_hat, P, startx1, modem_loc, data, R)
+                elif meas_type == "sonar_range":
+                    x_hat, P = KalmanFilter._fuse_range_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+                elif meas_type == "sonar_azimuth":
+                    x_hat, P = KalmanFilter._fuse_azimuth_tracked(
+                        x_hat, P, startx1, startx2, data, R)
+                else:
+                    raise ValueError("Unrecognized measurement type: " + str(meas_type))
+            
+            # Intersect with navigation filter
+            if len(self.x_nav_history_prior) > index:
+                x_nav = self.x_nav_history_prior[index]
+                P_nav = self.P_nav_history_prior[index]
+                x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
+                # Go 8 -> 6
+                rot_mat_nav = np.array([
+                    [1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 0]]
+                )
+                nav_est_x = rot_mat_nav @ x_nav
+                nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+
+                rot_mat = np.zeros((6, x_hat.shape[0]))
+                rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
+                x_hat_agent = rot_mat @ x_hat
+                P_agent = rot_mat @ P @ rot_mat.T
+
+                if fast_ci:
+                    mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+                else:
+                    mean_result, cov_result = KalmanFilter._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
+
+                # PSCI for tracking filter
+                D_inv = inv(cov_result) - inv(P_agent)
+                D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
+                D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
+                D_inv_d_zeros = rot_mat.T @ D_inv_d
+                P_new = inv( inv(P) + D_inv_zeros)
+                x_hat = P_new @ (inv(P) @ x_hat + D_inv_d_zeros )
+                P = P_new
+        self.x_hat = x_hat
+        self.P = P
+
+    def intersect_strapdown(self, x_nav, P_nav, agent, fast_ci=False, share_depth=True):
+        """
+        share_depth: take the depth estimate from x_nav and filter it as part of every agent
+        """
+        if share_depth:
+            self._filter_artificial_depth(x_nav[2])
+
+        self.x_nav_history_prior.append(deepcopy(x_nav))
+        self.P_nav_history_prior.append(deepcopy(P_nav))
 
         # Go 8 -> 6
         rot_mat_nav = np.array([

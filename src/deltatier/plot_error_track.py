@@ -8,6 +8,19 @@ def plot_error_track(x_gt_history, x_hat_history_lst, P_history_lst, STATES, BLU
     # Get error
     # Loop through states & plot with uncertainty
 
+    # ping_delay = 3
+    # broadcast_delay = 4
+
+    # num_agents = x_gt_history.shape[0] / STATES
+
+    # ping_time = ping_delay*BLUE_NUM + broadcast_delay
+    # agent_share_times = []
+    # for b in range(BLUE_NUM):
+    #     agent_share_times.append( ping_time + broadcast_delay*(b+1) )
+    # total_time = agent_share_times[-1] + 1
+
+    # current_iter = np.mod(loop_num, total_time)
+
     NUM_AGENTS = BLUE_NUM + RED_NUM
     fig, axs = plt.subplots(NUM_AGENTS, 6) #x,y,z,vels
 
