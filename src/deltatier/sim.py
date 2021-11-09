@@ -47,11 +47,12 @@ TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
 NUM_LOOPS = 1000
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 1.0
-SONAR_RANGE = 30.0
+SONAR_RANGE = 20.0
 MODEM_LOCATION = [11,11,0]
 DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
 BUFFER_SIZE = 32
+LOST_AGENT_STD = 10 # Standard deviation for the associator to consider this agent "lost"
 
 # Noise Params
 q_pos = 0.01 # std
@@ -117,7 +118,7 @@ for b in range(BLUE_NUM):
 
 blue_associators = []
 for b in range(BLUE_NUM):
-    associator = Associator(10, 10, 3, q_perceived_tracking_pos*np.eye(2))
+    associator = Associator(10, LOST_AGENT_STD, 3, q_perceived_tracking_pos*np.eye(2))
     blue_associators.append( associator )
 
 # HISTORY

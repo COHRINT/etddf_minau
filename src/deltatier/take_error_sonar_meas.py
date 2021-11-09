@@ -36,12 +36,12 @@ def take_error_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_ran
         R = np.eye(2) # Not used rn...
         associated_agent, proto = associator.associate(agent_dict, global_meas, R, loop_num)
 
-        if associated_agent != "proto":
+        if associated_agent != "proto" and associated_agent != "none":
             MISSASSOCATION_COUNT += 1
             if proto:
                 PROTOTRACK_MISSASSOCIATION += 1
             print("{} {}".format(MISSASSOCATION_COUNT, PROTOTRACK_MISSASSOCIATION))
 
-        if associated_agent != "proto":
+        if associated_agent != "proto" and associated_agent != "none":
             kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
             kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
