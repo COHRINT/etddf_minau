@@ -45,7 +45,7 @@ UNKNOWN_AGENT_UNCERTAINTY = 1e6 # Red and blue agents with unknown starting loca
 MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
 MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
 
-IMPLICIT_BYTE_COST = 0.5
+IMPLICIT_BYTE_COST = 0.0
 EXPLICIT_BYTE_COST = 1.5
 
 class KalmanFilter:

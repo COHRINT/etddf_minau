@@ -99,9 +99,10 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                 proto = associator.get_proto()
 
                 if associated_agent != "proto" and associated_agent != "none":
-                    assert associated_agent == a
+                    # assert associated_agent == a
+                    pass
 
-                if associated_agent != "proto" and associated_agent != "none":
+                if associated_agent == a:
                     kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
                     kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
 

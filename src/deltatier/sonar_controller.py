@@ -21,6 +21,7 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
         if np.trace(cov) > lost_thresh:
             lost_agent = True
         elif np.trace(cov) > ping_thresh: # Agent is lost and attempt to scan
+            print("Pinging: {}".format(agent))
             return scan_agent(mean, my_pos, scan_size)
 
     # Check if we have a lost agent, scan 360 deg
@@ -43,5 +44,6 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
 
         max_index = np.argmax(unc)
         agent = agents[max_index]
+        print("Pinging: {}".format(agent))
         mean = agent_dict[agent][0]
         return scan_agent(mean, my_pos, scan_size)

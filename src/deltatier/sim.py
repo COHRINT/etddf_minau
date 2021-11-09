@@ -37,7 +37,7 @@ AGENT_TO_PLOT = 0
 
 # Simulation
 
-BLUE_NUM = 1
+BLUE_NUM = 3
 RED_NUM = 1 # OR 1
 NUM_AGENTS = BLUE_NUM + RED_NUM
 STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
@@ -53,8 +53,8 @@ DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
 BUFFER_SIZE = 32
 LOST_AGENT_STD = 10 # Standard deviation for the associator to consider this agent "lost"
-SCAN_ANGLE_SIZE = 170 * (np.pi / 180.0)
-scan_start_angles = [0,0]
+SCAN_ANGLE_SIZE = 40 * (np.pi / 180.0)
+scan_start_angles = [0] * BLUE_NUM
 PING_THRESH = 10.0
 LOST_THRESH = 20.0
 

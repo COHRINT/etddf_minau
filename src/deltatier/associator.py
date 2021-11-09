@@ -79,7 +79,7 @@ class Associator:
             min_index = np.argmin(vals)
             agent_name = agents[min_index]
             # Attempt to associate with an agent
-            if vals[min_index] < np.sqrt(8): # is better than 2 sigma in each direction
+            if vals[min_index] < np.sqrt(2): # is better than 1 sigma in each direction
                 return agent_name, False
 
         if len(search_agents) > 0:
