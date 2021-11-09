@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from associator import Associator
 from kf_filter import KalmanFilter
 from modem_schedule import modem_schedule
 from plot_error_track import plot_error_track
@@ -21,7 +22,7 @@ from copy import deepcopy
 
 from set_estimate_nav import set_estimate_nav
 
-# np.random.seed(4)
+np.random.seed(4)
 np.set_printoptions(precision=2)
 np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
@@ -113,6 +114,11 @@ for b in range(BLUE_NUM):
     kf = KalmanFilter(blue_positions, landmark_positions, RED_NUM, is_deltatier=True)
     blue_filters.append( kf )
 
+blue_associators = []
+for b in range(BLUE_NUM):
+    associator = Associator(10, 20, 3, q_perceived_tracking_pos*np.eye(2))
+    blue_associators.append( associator )
+
 # HISTORY
 x_gt_history = np.zeros((TOTAL_STATES, NUM_LOOPS))
 
@@ -124,7 +130,7 @@ for loop_num in range(NUM_LOOPS):
         x_pos = x_gt[STATES*a:STATES*a+2, 0]
         delta = np.linalg.norm( waypoints[:,a] - x_pos )
         if delta < 1.0:
-            print("Waypoint reached by agent {}!".format(a))
+            #print("Waypoint reached by agent {}!".format(a))
             waypoints[:,a] = get_waypoint(MAP_DIM)
     
     # Get control input
@@ -179,7 +185,10 @@ for loop_num in range(NUM_LOOPS):
         # Update Tracking Filter
         kf = blue_filters[a]
         kf.propogate(q_perceived_tracking_pos, q_perceived_tracking_vel)
-        take_sonar_meas(kf, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES)
+
+        # TODO add a scan region
+        associator = blue_associators[a]
+        take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num)
 
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, \

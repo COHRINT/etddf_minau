@@ -59,7 +59,7 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
 
         # This agent is sharing
         if agent_share_times[agent] == current_iter:
-            print("Sharing!")
+            #print("Sharing!")
             mult, buffer, explicit_cnt, implicit_cnt = kf.pull_buffer(delta_range, delta_dict, position_process_noise, velocity_process_noise, modem_location, buffer_size)
 
             for b in range(BLUE_NUM):
