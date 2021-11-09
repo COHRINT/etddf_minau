@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from associator import Associator
-from kf_filter import KalmanFilter
+from kf_filter import LANDMARK_UNCERTAINTY, KalmanFilter
 from modem_schedule import modem_schedule
 from plot_error_track import plot_error_track
 from take_sonar_meas import take_sonar_meas
@@ -37,7 +37,7 @@ AGENT_TO_PLOT = 0
 
 # Simulation
 
-BLUE_NUM = 3
+BLUE_NUM = 2
 RED_NUM = 1 # OR 1
 NUM_AGENTS = BLUE_NUM + RED_NUM
 STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
@@ -47,7 +47,7 @@ TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
 NUM_LOOPS = 500
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 1.0
-SONAR_RANGE = 100.0
+SONAR_RANGE = 30.0
 MODEM_LOCATION = [11,11,0]
 DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
@@ -57,6 +57,7 @@ SCAN_ANGLE_SIZE = 40 * (np.pi / 180.0)
 scan_start_angles = [0] * BLUE_NUM
 PING_THRESH = 10.0
 LOST_THRESH = 20.0
+LANDMARK_LOC = None #[5,5,0]
 
 # Noise Params
 q_pos = 0.01 # std
@@ -117,11 +118,19 @@ for a in range(BLUE_NUM):
     pos = agent_state[:3].tolist()
     blue_positions.append(pos)
 
-landmark_positions = []
+if LANDMARK_LOC is not None:
+    landmark_positions = [LANDMARK_LOC]
+else:
+    landmark_positions = []
 
 blue_filters = []
 for b in range(BLUE_NUM):
-    kf = KalmanFilter(blue_positions, landmark_positions, RED_NUM, is_deltatier=True)
+    blue_position = deepcopy(blue_positions)
+    save_value = blue_position[b]
+    blue_position = [[]] * len(blue_position)
+    blue_position[b] = save_value
+
+    kf = KalmanFilter(blue_position, landmark_positions, RED_NUM, is_deltatier=True)
     blue_filters.append( kf )
 
 blue_associators = []
@@ -199,7 +208,7 @@ for loop_num in range(NUM_LOOPS):
         # TODO add a scan region
         associator = blue_associators[a]
         scan_start_angle = scan_start_angles[a]
-        scan_start_angles[a] = take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE, PING_THRESH, LOST_THRESH)
+        scan_start_angles[a] = take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE, PING_THRESH, LOST_THRESH, LANDMARK_LOC)
         # take_error_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE)
 
     for a in range(BLUE_NUM):

@@ -36,7 +36,7 @@ KEEP landmarks in the estimate, so that we can talk about them more naturally..
 """
 
 STATES = 6 # x,y,z, x_vel, y_vel, z_vel
-LANDMARK_UNCERTAINTY = 1e-3
+LANDMARK_UNCERTAINTY = 1.0 # Or else we won't be able to associate
 KNOWN_POSITION_UNCERTAINTY = 1.0
 KNOWN_VELOCITY_UNCERTAINTY = 1e-2
 UNKNOWN_AGENT_UNCERTAINTY = 1e6 # Red and blue agents with unknown starting locations
@@ -943,13 +943,12 @@ class KalmanFilter:
         Pcc = np.linalg.inv(omega_optimal*Pa_inv + (1-omega_optimal)*Pb_inv)
         c_bar = Pcc.dot( omega_optimal*Pa_inv.dot(xa) + (1-omega_optimal)*Pb_inv.dot(xb))
         return c_bar.reshape(-1,1), Pcc
-        pass
 
     def _get_agent_state_index(self, agent_num):
         if agent_num < self.BLUE_NUM + self.RED_NUM:
             return 6*agent_num
         else: # landmark
-            remainder = agent_num - self.BLUE_NUM + self.RED_NUM
+            remainder = agent_num - self.BLUE_NUM - self.RED_NUM
             return 6*(self.BLUE_NUM + self.RED_NUM) + 3*remainder
     
 

@@ -70,16 +70,13 @@ class Associator:
         # Loop through position_dict and use simple 1D approximation to get association values
         new_agent_dict = agent_dict.copy()
 
-        if t > 400:
-            pass
-
         agents, vals, search_agents = self._get_distances(new_agent_dict, meas, True)
 
         if vals:
             min_index = np.argmin(vals)
             agent_name = agents[min_index]
             # Attempt to associate with an agent
-            if vals[min_index] < np.sqrt(2): # is better than 1 sigma in each direction
+            if vals[min_index] < np.sqrt(8): # is better than 2 sigma in each direction
                 return agent_name, False
 
         if len(search_agents) > 0:
@@ -106,7 +103,7 @@ class Associator:
                     if self.proto_tracks[agent_name][2] >= self.proto_track_points: # We need to associate with an agent, can only do so if there is 1 unknown
 
                         if len(search_agents) > 1:
-                            print("Cannot associate due to multiple agents being lost: " + str(list(search_agents.keys())))
+                            print("Cannot associate due to multiple agents being lost: " + str(search_agents))
                             return "proto", False
                         else:
                             # Associate this prototrack with the only lost agent!

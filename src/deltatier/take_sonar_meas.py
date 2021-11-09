@@ -34,7 +34,7 @@ def check_detection(angle, scan_start_angle, SCAN_ANGLE_SIZE):
 
 def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
     w_perceieved_azimuth, sonar_range, prob_det, STATES, loop_num, \
-    scan_start_angle, SCAN_ANGLE_SIZE, ping_thresh, lost_thresh, landmark_pos=[]):
+    scan_start_angle, SCAN_ANGLE_SIZE, ping_thresh, lost_thresh, LANDMARK_LOC):
     """
     landmark_pos : list of list of landmark positions
 
@@ -62,6 +62,36 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
         mean = np.reshape( x_hat[6*b:6*b+2,0], (-1,1) )
         cov = P[6*b:6*b+2, 6*b:6*b+2]
         agent_dict[b] = [mean, cov]
+    if LANDMARK_LOC is not None:
+        lmrk_loc = np.reshape( np.array(LANDMARK_LOC), (-1,1) )
+        agent_dict[num_agents] = [lmrk_loc, np.eye(2)]
+
+        # Check landmark first
+        pos_arr = np.array(LANDMARK_LOC)
+        delta = pos_arr - agent_position
+        if norm(delta) < sonar_range and np.random.binomial(1, prob_det):
+            x_delta = delta[0]
+            y_delta = delta[1]
+            world_angle = np.arctan2(y_delta, x_delta)
+            if check_detection(world_angle, scan_start_angle, SCAN_ANGLE_SIZE):
+                DETECTIONS += 1
+                rel_range_meas = norm(delta) + np.random.normal(0.0, w)
+                rel_azimuth_meas = world_angle - agent_theta_gt + np.random.normal(0.0, w)
+                rel_azimuth_meas = rel_azimuth_meas + agent_theta_est
+
+                ### Associator Node ###
+                meas = np.array([
+                    [rel_range_meas * np.cos(rel_azimuth_meas)],
+                    [rel_range_meas * np.sin(rel_azimuth_meas)]
+                ])
+                taker_position = np.reshape( x_hat[6*agent:6*agent+2,0], (-1,1) )
+                global_meas = meas + taker_position
+                R = np.eye(2) # Not used rn...
+                associated_agent, _ = associator.associate(agent_dict, global_meas, R, loop_num)
+                if associated_agent == num_agents:
+                    kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
+                    kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
+
 
     for a in range(num_agents):
         if a == agent:
