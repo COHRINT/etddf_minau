@@ -37,25 +37,25 @@ AGENT_TO_PLOT = 0
 
 # Simulation
 
-BLUE_NUM = 2
-RED_NUM = 0 # OR 1
+BLUE_NUM = 1
+RED_NUM = 1 # OR 1
 NUM_AGENTS = BLUE_NUM + RED_NUM
 STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
-NUM_LOOPS = 1000
+NUM_LOOPS = 500
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 1.0
-SONAR_RANGE = 20.0
+SONAR_RANGE = 100.0
 MODEM_LOCATION = [11,11,0]
 DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
 BUFFER_SIZE = 32
 LOST_AGENT_STD = 10 # Standard deviation for the associator to consider this agent "lost"
-SCAN_ANGLE_SIZE = 40 * (np.pi / 180.0)
+SCAN_ANGLE_SIZE = 170 * (np.pi / 180.0)
 scan_start_angles = [0,0]
-PING_THRESH = 7.0
+PING_THRESH = 10.0
 LOST_THRESH = 20.0
 
 # Noise Params
@@ -94,6 +94,10 @@ for i in range(NUM_AGENTS):
 P = 0.1 * np.eye(STATES)
 x_navs = deepcopy( np.reshape( x_gt, (STATES, NUM_AGENTS), "F"))
 P_navs = np.matlib.repmat(P, 1, NUM_AGENTS)
+
+# Trim red agent states
+x_navs = x_navs[:, :BLUE_NUM]
+P_navs = P_navs[:, :STATES*BLUE_NUM]
 
 x_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS))
 P_navs_history = np.zeros((STATES*BLUE_NUM, NUM_LOOPS*STATES))

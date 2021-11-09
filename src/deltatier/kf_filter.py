@@ -85,7 +85,7 @@ class KalmanFilter:
         if red_agent:
             self.x_hat.extend([0]*3) # Position
             self.x_hat.extend([0]*3) # Velocity
-            self.P.extend([KNOWN_POSITION_UNCERTAINTY]*3 + [KNOWN_VELOCITY_UNCERTAINTY]*3)
+            self.P.extend([UNKNOWN_AGENT_UNCERTAINTY]*3 + [UNKNOWN_AGENT_UNCERTAINTY]*3)
 
         for p in landmark_positions:
             self.x_hat.extend(p) # Position (no velocity)

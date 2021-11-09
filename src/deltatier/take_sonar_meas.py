@@ -50,6 +50,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
     agent_position = agent_states[:3]
     agent_theta_gt = agent_states[3]
     agent_theta_est = x_nav[3,0]
+    proto = None
 
     # Create agent dict
     x_hat = np.copy(kf.x_hat)
@@ -80,7 +81,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
             world_angle = np.arctan2(y_delta, x_delta)
             if check_detection(world_angle, scan_start_angle, SCAN_ANGLE_SIZE):
                 DETECTIONS += 1
-                print(DETECTIONS)
+                # print(DETECTIONS)
 
                 rel_range_meas = norm(delta) + np.random.normal(0.0, w)
                 rel_azimuth_meas = world_angle - agent_theta_gt + np.random.normal(0.0, w)
@@ -95,6 +96,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                 global_meas = meas + taker_position
                 R = np.eye(2) # Not used rn...
                 associated_agent, _ = associator.associate(agent_dict, global_meas, R, loop_num)
+                proto = associator.get_proto()
 
                 if associated_agent != "proto" and associated_agent != "none":
                     assert associated_agent == a
@@ -103,4 +105,4 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                     kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
                     kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
 
-    return scan_control(scan_start_angle, agent_position, agent_dict, [], SCAN_ANGLE_SIZE, ping_thresh, lost_thresh)
+    return scan_control(scan_start_angle, agent_position, agent_dict, proto, SCAN_ANGLE_SIZE, ping_thresh, lost_thresh)
