@@ -56,7 +56,7 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
             # assert np.array_equal(x_hat_prior, x_hat_post_catchup)
         
     else: # Check if an agent is sharing
-
+        
         # This agent is sharing
         if agent_share_times[agent] == current_iter:
             #print("Sharing!")

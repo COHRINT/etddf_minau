@@ -4,7 +4,7 @@ from numpy.linalg import norm
 MISSASSOCATION_COUNT = 0
 PROTOTRACK_MISSASSOCIATION = 0
 
-def take_error_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, w_perceieved_azimuth, sonar_range, prob_det, STATES, loop_num, landmark_pos=[]):
+def take_error_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, w_perceieved_azimuth, sonar_range, prob_det, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE, landmark_pos=[]):
     """
     Randomly generate sonar measurements around the agent and make sure proto is always returned
     """
@@ -26,7 +26,7 @@ def take_error_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_ran
             mean = np.reshape( x_hat[6*b:6*b+2,0], (-1,1) )
             cov = P[6*b:6*b+2, 6*b:6*b+2]
             agent_dict[b] = [mean, cov]
-            
+
         meas = np.array([
             [rel_range_meas * np.cos(rel_azimuth_meas)],
             [rel_range_meas * np.sin(rel_azimuth_meas)]

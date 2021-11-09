@@ -53,6 +53,10 @@ DELTA_RANGE = list(range(1,256))
 DELTA_DICT = {"sonar_range" : 0.02, "sonar_azimuth" : 0.01}
 BUFFER_SIZE = 32
 LOST_AGENT_STD = 10 # Standard deviation for the associator to consider this agent "lost"
+SCAN_ANGLE_SIZE = 40 * (np.pi / 180.0)
+scan_start_angles = [0,0]
+PING_THRESH = 7.0
+LOST_THRESH = 20.0
 
 # Noise Params
 q_pos = 0.01 # std
@@ -190,8 +194,9 @@ for loop_num in range(NUM_LOOPS):
 
         # TODO add a scan region
         associator = blue_associators[a]
-        take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num)
-        take_error_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num)
+        scan_start_angle = scan_start_angles[a]
+        scan_start_angles[a] = take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE, PING_THRESH, LOST_THRESH)
+        # take_error_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num, scan_start_angle, SCAN_ANGLE_SIZE)
 
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, \
