@@ -55,7 +55,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, w_
             taker_position = np.reshape( x_hat[6*agent:6*agent+2,0], (-1,1) )
             global_meas = meas + taker_position
             R = np.eye(2) # Not used rn...
-            associated_agent = associator.associate(agent_dict, global_meas, R, loop_num)
+            associated_agent, _ = associator.associate(agent_dict, global_meas, R, loop_num)
 
             if associated_agent != "proto":
                 assert associated_agent == a

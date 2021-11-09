@@ -4,6 +4,7 @@ from kf_filter import KalmanFilter
 from modem_schedule import modem_schedule
 from plot_error_track import plot_error_track
 from take_sonar_meas import take_sonar_meas
+from take_error_sonar_meas import take_error_sonar_meas
 from filter_dvl import filter_dvl
 from filter_baro import filter_baro
 from filter_compass import filter_compass
@@ -116,7 +117,7 @@ for b in range(BLUE_NUM):
 
 blue_associators = []
 for b in range(BLUE_NUM):
-    associator = Associator(10, 20, 3, q_perceived_tracking_pos*np.eye(2))
+    associator = Associator(10, 10, 3, q_perceived_tracking_pos*np.eye(2))
     blue_associators.append( associator )
 
 # HISTORY
@@ -189,6 +190,7 @@ for loop_num in range(NUM_LOOPS):
         # TODO add a scan region
         associator = blue_associators[a]
         take_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num)
+        take_error_sonar_meas(kf, associator, x_gt, x_nav, a, w, w_perceived_sonar_range, w_perceived_sonar_azimuth, SONAR_RANGE, PROB_DETECTION, STATES, loop_num)
 
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, \

@@ -68,16 +68,23 @@ class Associator:
 
         # Loop through position_dict and use simple 1D approximation to get association values
         new_agent_dict = agent_dict.copy()
-        new_agent_dict.update(self.proto_tracks)
 
         agents, vals, search_agents = self._get_distances(new_agent_dict, meas, True)
 
         min_index = np.argmin(vals)
         agent_name = agents[min_index]
-        if vals[min_index] < np.sqrt(18): # is better than 3 sigma in each direction
-            if "proto" in str(agent_name): # it's a prototrack, filter this measurement
+        # Attempt to associate with an agent
+        if vals[min_index] < np.sqrt(2): # is better than 2 sigma in each direction
+            return agent_name, False
+
+        # Can't associate with an agent --> Try to associate with a prototrack
+        if len(self.proto_tracks) > 0:
+            agents, vals, _ = self._get_distances(self.proto_tracks, meas, False)
+            min_index = np.argmin(vals)
+            agent_name = agents[min_index]
+            if vals[min_index] < np.sqrt(2): # is better than 2 sigma in each direction
                 self.proto_tracks[agent_name][2] += 1
-                self.proto_tracks[agent_name][3] = t
+                self.proto_tracks[agent_name][4].append([meas, t, vals[min_index]])
                 print("{} ({}/{}) meas associated".format(agent_name, self.proto_tracks[agent_name][2], self.proto_track_points))
 
                 x = self.proto_tracks[agent_name][0]
@@ -92,17 +99,21 @@ class Associator:
 
                 if self.proto_tracks[agent_name][2] >= self.proto_track_points: # We need to associate with an agent, can only do so if there is 1 unknown
                     if len(search_agents) == 0: # We haven't lost an agent -> associate with the most likely agent
+                        
+                        # This is something in the environment we are not tracking... SO don't associate!
                         agents, vals, search_agents = self._get_distances(agent_dict, meas, False)
                         min_index = np.argmin(vals)
                         associated_agent = agents[min_index]
                         print("Associating prototrack {} with agent {}".format(agent_name, associated_agent))
+
                         # Remove the prototrack
                         del self.proto_tracks[agent_name]
-                        return associated_agent
+                        # return associated_agent, True
+                        return "proto", False
 
                     if len(search_agents) > 1:
                         print("Cannot associate due to multiple agents being lost: " + str(list(search_agents.keys())))
-                        return "proto"
+                        return "proto", False
                     else:
                         # Associate this prototrack with the only lost agent!
                         associated_agent = search_agents[0]
@@ -110,19 +121,16 @@ class Associator:
 
                         # Remove the prototrack
                         del self.proto_tracks[agent_name]
-                        return associated_agent
+                        return associated_agent, True
                 else:
-                    return "proto"
-            else:
-                # print("Associating with {}".format(agent_name))
-                return agent_name
-        else:
-            # Start a prototrack
-            name = "proto_track_" + str(self.proto_track_naming_num)
-            print("Starting " + name)
-            self.proto_tracks[name] = [meas, R, 1, t]
-            self.proto_track_naming_num += 1
-            return "proto"
+                    return "proto", False
+        
+        # Can't associate with anything? --> Start a prototrack
+        name = "proto_track_" + str(self.proto_track_naming_num)
+        print("Starting " + name)
+        self.proto_tracks[name] = [meas, R, 1, t, [[meas, t, 0]]]
+        self.proto_track_naming_num += 1
+        return "proto", False
 
     def clean_protos(self, t):
         if self.last_time == None:
