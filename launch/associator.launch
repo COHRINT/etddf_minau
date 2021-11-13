@@ -1,0 +1,7 @@
+<launch>
+
+    <node name="associator" pkg="etddf_minau" type="associator.py" output="screen">
+
+    </node>
+
+</launch>
