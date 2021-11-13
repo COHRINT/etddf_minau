@@ -13,16 +13,16 @@ Assumptions
 
 class Associator:
 
-    def __init__(self, time_to_drop, proto_track_dist, proto_track_points, proto_Q):
+    def __init__(self, time_to_drop, lost_agent_unc, proto_track_points, proto_Q):
         """
-        proto_track_dist : float
+        lost_agent_unc : float
             uncertainty size by which we should use a prototrack algorithm to associate first
         Q : np.array (2,2)
             uncertainty (per second) to add to prototracks
         """
         self.proto_tracks = {} # { "proto_X" : [mean, cov, num_points, last_meas_time] }
         self.time_to_drop = time_to_drop
-        self.proto_track_dist = proto_track_dist
+        self.lost_agent_unc = lost_agent_unc
         self.proto_track_points = proto_track_points
         self.proto_Q = proto_Q
         self.last_time = None
@@ -43,7 +43,7 @@ class Associator:
             x_std = np.sqrt(cov[0,0])
             y_std = np.sqrt(cov[1,1])
 
-            if ignore_lost and (x_std > self.proto_track_dist or y_std > self.proto_track_dist):
+            if ignore_lost and (x_std > self.lost_agent_unc or y_std > self.lost_agent_unc):
                 search_agents.append(agent)
                 continue
 
