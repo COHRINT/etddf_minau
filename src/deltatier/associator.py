@@ -54,13 +54,13 @@ class Associator:
             agents.append(agent)
         return agents, vals, search_agents
 
-    def associate(self, agent_dict, meas, R, t):
+    def associate(self, agent_dict, meas, R, t, association_sigma=2):
         """
         agent_dict : {[mean], [cov]
         meas : np.array (2,1)
             linearized position of the measurement (gps-like)
         R : np.array (2,2)
-            uncertainty of the measurement (not used currently)
+            uncertainty of the measurement
         t : time
             arbitrary time units, just needs to be comparable to self.time_to_drop
         """
@@ -76,7 +76,7 @@ class Associator:
             min_index = np.argmin(vals)
             agent_name = agents[min_index]
             # Attempt to associate with an agent
-            if vals[min_index] < np.sqrt(8): # is better than 2 sigma in each direction
+            if vals[min_index] < np.linalg.norm([association_sigma,association_sigma]): # is better than 2 sigma in each direction
                 return agent_name, False
 
         if len(search_agents) > 0:
@@ -85,7 +85,7 @@ class Associator:
                 agents, vals, _ = self._get_distances(self.proto_tracks, meas, False)
                 min_index = np.argmin(vals)
                 agent_name = agents[min_index]
-                if vals[min_index] < np.sqrt(8): # is better than 2 sigma in each direction
+                if vals[min_index] < np.linalg.norm([association_sigma,association_sigma]):
                     self.proto_tracks[agent_name][2] += 1
                     self.proto_tracks[agent_name][4].append([meas, t, vals[min_index]])
                     print("{} ({}/{}) meas associated".format(agent_name, self.proto_tracks[agent_name][2], self.proto_track_points))

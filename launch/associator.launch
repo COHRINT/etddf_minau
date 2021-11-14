@@ -10,6 +10,8 @@
         <param name="lost_agent_unc" value="10" /> <!-- Std to consider an agent lost -->
         <param name="proto_track_points" value="2" /> <!-- Number of prototrack points to associator a lost agent -->
         <param name="red_agent_name" value="$(arg red_agent_name)" />
+        <param name="bearing_var" value="0.1"/> <!-- 15 deg std -->
+        <param name="range_var" value="0.1"/> <!-- 0.3m std -->
         <rosparam param="blue_team_names" subst_value="True">$(arg blue_team_names)</rosparam> 
         <rosparam param="blue_team_positions" subst_value="True">$(arg blue_team_positions_enu)</rosparam> 
         <rosparam command="load" file="$(arg config_file)" />
