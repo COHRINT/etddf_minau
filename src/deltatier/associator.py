@@ -94,9 +94,15 @@ class Associator:
                     P = self.proto_tracks[agent_name][1]
                     # Filter the measurement
                     H = np.eye(2)
-                    K = P @ H.T @ inv(H @ P @ H.T + R)
-                    x = x + K @ (meas - H @ x)
-                    P = P - K @ H @ P
+                    K = np.dot( np.dot(P, H.T), inv( np.dot( np.dot( H, P), H.T) + R) )
+                    x = x + np.dot(K, (meas - np.dot(H, x)))
+                    P = P - np.dot( np.dot(K,H), P)
+
+                    # Shorthand only Python3
+                    # K = P @ H.T @ inv(H @ P @ H.T + R)
+                    # x = x + K @ (meas - H @ x)
+                    # P = P - K @ H @ P
+
                     self.proto_tracks[agent_name][0] = x
                     self.proto_tracks[agent_name][1] = P
 

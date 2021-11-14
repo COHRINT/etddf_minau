@@ -8,6 +8,30 @@ from minau.msg import SonarTargetList, SonarTarget
 from cuprint.cuprint import CUPrint
 from deltatier.associator import Associator
 import numpy as np
+from std_msgs.msg import Float64
+from deltatier.sonar_controller import scan_control
+from deltatier.normalize_angle import normalize_angle
+
+"""
+The architecture is a bit complex
+intfc for sonar should be in gradians for consistency, need to convert on my end
+
+We provide upper and lower bounds, SOO this node should be configured with the scan size
+
+CHANGES TO SONAR NODE
+1) Change from rosservice to pub/sub
+2) Pub when complete a scan
+3) Add Correct message type to this script for sonar configuration
+
+Scenario
+1 configured for 360 degree scan
+2 at some point we want to scan an agent
+3 provide upper and lower bounds
+4 I should check if anything changed and only update then? 
+
+Whenever we get a detection:
+
+"""
 
 class SonarAssociator:
 
@@ -16,13 +40,24 @@ class SonarAssociator:
         self.cuprint = CUPrint("SonarAssociator")
         self.cuprint("Loading")
 
-        # Load params
+        # Associator Params
         time_to_drop = rospy.get_param("~time_to_drop")
-        lost_agent_unc = rospy.get_param("~lost_agent_unc")
+        self.lost_agent_unc = rospy.get_param("~lost_agent_unc")
         proto_track_points = rospy.get_param("~proto_track_points")
         process_noise = rospy.get_param("~process_noise/blueteam/x")
         proto_Q = np.array([[process_noise, 0],[0, process_noise]])
-        self.associator = Associator(time_to_drop, lost_agent_unc, proto_track_points, proto_Q)
+        self.associator = Associator(time_to_drop, self.lost_agent_unc, proto_track_points, proto_Q)
+
+        # Sonar Controller Params
+        self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
+        if self.enable_sonar_control:
+            self.scan_size_deg = rospy.get_param("~scan_size_deg")
+            self.ping_thresh = rospy.get_param("~ping_thresh")
+            self.scan_angle = None
+            rospy.Subscriber("sonar_processing/scan_complete_last_angle", Float64, self.scan_angle_callback)
+            # rospy.wait_for_message( "sonar_processing/scan_complete_last_angle", Float64 )
+            self.prototrack = None
+            # self.sonar_control_pub = rospy.Publisher("sonar/set_scan_angle", )
 
         self.bearing_var = rospy.get_param("~bearing_var")
         self.range_var = rospy.get_param("~range_var")
@@ -52,6 +87,51 @@ class SonarAssociator:
         rospy.Subscriber(sonar_topic, SonarTargetList, self.sonar_callback)
 
         self.cuprint("Loaded")
+    
+    def scan_angle_callback(self, msg):
+        last_scan_angle_rad = self._gradian2radian( msg.data )
+        self.scan_angle = last_scan_angle_rad # ending scan angle
+        self.update_sonar_control()
+
+    def update_sonar_control(self):
+        if self.enable_sonar_control:
+            agent_dict = self._get_agent_dict()
+            my_pos = agent_dict[self.my_name][0]
+            # Update the scan control
+            scan_size_rad = np.radians(self.scan_size_deg)
+            angle, scan_360 = scan_control(
+                self.scan_angle, my_pos, agent_dict, self.prototrack, 
+                scan_size_rad, self.ping_thresh, self.lost_agent_unc)
+            self.set_sonar_scan(angle, scan_360)
+
+    def _gradian2radian(self, grad):
+        return normalize_angle( (2*np.pi / 400) * grad )
+
+    def _radian2gradian(self, rad):
+        return int( np.mod( (400 / (2*np.pi)) * rad, 400 ) )
+
+    def set_sonar_scan(self, start_angle, scan_360):
+        start_grad = self._radian2gradian(start_angle)
+        if scan_360:
+            end_grad = np.mod( start_grad + 399, 400)
+        else:
+            scan_size_rad = np.radians(self.scan_size_deg)
+            end_grad = np.mod( start_grad + self._radian2gradian(scan_size_rad), 400 )
+
+        print("New sonar configuration: {}".format([start_grad, end_grad]))
+
+        # self.sonar_control_pub.publish()
+        
+    def _get_agent_dict(self):
+        # Construct agent_dict
+        agent_dict = {}
+        for a in self.agent_poses:
+            position = self.agent_poses[a].pose.position
+            position = np.array([[position.x],[position.y],[position.z]])
+            cov = np.reshape(self.agent_poses[a].covariance, (6,6))
+            cov = cov[:3,:3]
+            agent_dict[a] = [position, cov]
+        return agent_dict
 
     def pose_callback(self, msg):
         ori = msg.pose.pose.orientation
@@ -68,14 +148,7 @@ class SonarAssociator:
     def sonar_callback(self, msg):
         self.cuprint("Message received")
 
-        # Construct agent_dict
-        agent_dict = {}
-        for a in self.agent_poses:
-            position = self.agent_poses[a].pose.position
-            position = np.array([[position.x],[position.y],[position.z]])
-            cov = np.reshape(self.agent_poses[a].covariance, (6,6))
-            cov = cov[:3,:3]
-            agent_dict[a] = [position, cov]
+        agent_dict = self._get_agent_dict()
 
         # Construct meas np array, linearizing
         new_msg = deepcopy(msg)
@@ -87,23 +160,27 @@ class SonarAssociator:
 
             bearing_std = np.sqrt( self.bearing_var )
             unc_x = ( st.range_m * bearing_std ) ** 2
-            R = np.array( [[unc_x, 0],[0, unc_x]])
+            R = np.array( [[unc_x, 0],[0, unc_x]]) # TODO actual approximation with rotated covariance
             t = msg.header.stamp
 
             agent = self.associator.associate(agent_dict, meas, R, t.secs)
+            self.prototrack = self.associator.get_proto()
 
             if agent != "none" and agent != "proto":
                 self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
                 new_msg.targets.append( st )
+            
+            self.scan_angle = st.bearing_rad
+
+            # Update the scan control
+            self.update_sonar_control()
 
         # Publish new msg
         if new_msg.targets:
             print("Publishing")
             self.pub.publish( new_msg )
-
-            # Add the sonar controller into the mix!
 
 if __name__ == "__main__":
     rospy.init_node("sonar_association")
@@ -133,6 +210,8 @@ if __name__ == "__main__":
     cov = np.eye(6) * 10000
     o3.pose.covariance = list( cov.flatten() )
     d.red_agent_callback(o3)
+
+    d.scan_angle_callback( Float64( np.arctan2(5,5) ) )
 
     # Test measurement generation
     stl = SonarTargetList()

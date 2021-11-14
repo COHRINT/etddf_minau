@@ -1,5 +1,5 @@
 import numpy as np
-from normalize_angle import normalize_angle
+from deltatier.normalize_angle import normalize_angle
 from copy import deepcopy
 
 def scan_agent(mean, my_pos, scan_size):
@@ -11,7 +11,10 @@ def scan_agent(mean, my_pos, scan_size):
 
 def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thresh, lost_thresh):
     """
-    Returns the start scan region
+    scan_angle in inertial frame
+    Returns:
+    - float: the start scan region in inertial frame
+    - bool: whether scanning 360
     """
     # Determine if an agent needs pinging
     lost_agent = False
@@ -22,7 +25,7 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
             lost_agent = True
         elif np.trace(cov) > ping_thresh: # Agent is lost and attempt to scan
             print("Pinging: {}".format(agent))
-            return scan_agent(mean, my_pos, scan_size)
+            return scan_agent(mean, my_pos, scan_size), False
 
     # Check if we have a lost agent, scan 360 deg
     if lost_agent:
@@ -30,10 +33,10 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
         if prototrack is not None: # If we have any prototracks scan there first
             print("Prototrack started, rescanning")
             mean = prototrack[0]
-            return scan_agent(mean, my_pos, scan_size)
+            return scan_agent(mean, my_pos, scan_size), False
         else:
             print("Agent lost: scanning")
-            return normalize_angle( scan_angle + scan_size )
+            return normalize_angle( scan_angle + scan_size ), True
     else:
         # ping agent with highest uncertainty
         agents, unc = [], []
@@ -46,4 +49,4 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
         agent = agents[max_index]
         print("Pinging: {}".format(agent))
         mean = agent_dict[agent][0]
-        return scan_agent(mean, my_pos, scan_size)
+        return scan_agent(mean, my_pos, scan_size), False
