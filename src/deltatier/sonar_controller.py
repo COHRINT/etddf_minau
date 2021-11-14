@@ -36,7 +36,7 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
             return scan_agent(mean, my_pos, scan_size), False
         else:
             print("Agent lost: scanning")
-            return normalize_angle( scan_angle + scan_size ), True
+            return normalize_angle( scan_angle - scan_size ), True # Subtract b/c ping360 scans down
     else:
         # ping agent with highest uncertainty
         agents, unc = [], []
