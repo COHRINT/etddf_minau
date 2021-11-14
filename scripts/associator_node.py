@@ -22,6 +22,7 @@ CHANGES TO SONAR NODE
 1) Change from rosservice to pub/sub
 2) Pub when complete a scan
 3) Add Correct message type to this script for sonar configuration
+4) Add rospy.spin() below
 
 Scenario
 1 configured for 360 degree scan
@@ -29,7 +30,7 @@ Scenario
 3 provide upper and lower bounds
 4 I should check if anything changed and only update then? 
 
-Whenever we get a detection:
+# TODO try first deltatier simple with stack
 
 """
 
@@ -170,6 +171,8 @@ class SonarAssociator:
                 self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
+                st.bearing_variance = self.bearing_var
+                st.range_variance = self.range_var
                 new_msg.targets.append( st )
             
             self.scan_angle = st.bearing_rad

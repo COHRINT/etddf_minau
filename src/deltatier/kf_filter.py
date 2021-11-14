@@ -48,6 +48,20 @@ MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azim
 IMPLICIT_BYTE_COST = 0.0
 EXPLICIT_BYTE_COST = 1.5
 
+"""
+All the todos here
+- list creation: maybe can pull straight from the launch file -- maybe unknown blue agents, 
+- no landmark_positions
+- approximate modem measurements as being taken currently
+- should add a parameter for regular kalman filter and deltatier
+- 
+
+Separate test for unknown blue agents, so we don't necessarily need a good starting position, acoustic modems will help out
+Should repeat the strategy with just launching the if statement to debug
+
+
+"""
+
 class KalmanFilter:
 
     def __init__(self, blue_positions, landmark_positions, red_agent=False, is_deltatier=True):
@@ -114,6 +128,17 @@ class KalmanFilter:
             
             self.x_nav_history_prior = []
             self.P_nav_history_prior = []
+            
+
+    def get_agent_ids(self):
+        """
+        Returns the ids (startx's for agents)
+        """
+        ids = []
+        for a in range(self.BLUE_NUM + self.RED_NUM + self.LANDMARK_NUM):
+            ids.append( self._get_agent_state_index( a ) )
+        return ids
+
 
     def propogate(self, position_process_noise, velocity_process_noise):
         """
