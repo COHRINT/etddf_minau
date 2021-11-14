@@ -80,6 +80,7 @@ class Associator:
                 return agent_name
 
         if len(search_agents) > 0:
+            print("{} are lost".format(search_agents))
             # Can't associate with an agent --> Try to associate with a prototrack
             if len(self.proto_tracks) > 0:
                 agents, vals, _ = self._get_distances(self.proto_tracks, meas, False)

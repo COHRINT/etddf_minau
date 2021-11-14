@@ -3,7 +3,7 @@ from deltatier.normalize_angle import normalize_angle
 from copy import deepcopy
 
 def scan_agent(mean, my_pos, scan_size):
-    delta = mean - np.reshape(my_pos[:2], (-1,1))
+    delta = mean[:2] - np.reshape(my_pos[:2], (-1,1))
     x_delta = delta[0]
     y_delta = delta[1]
     world_angle = np.arctan2(y_delta, x_delta)

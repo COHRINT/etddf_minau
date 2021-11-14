@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 
 from copy import deepcopy
 import tf
@@ -37,8 +37,8 @@ class SonarAssociator:
 
     def __init__(self):
         
-        self.cuprint = CUPrint("SonarAssociator")
-        self.cuprint("Loading")
+        self.my_name = rospy.get_namespace()[:-1].strip("/")
+        self.cuprint = CUPrint("{}/associator_node".format(self.my_name))
 
         # Associator Params
         time_to_drop = rospy.get_param("~time_to_drop")
@@ -71,7 +71,6 @@ class SonarAssociator:
             rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
 
         # Get my pose
-        self.my_name = rospy.get_namespace()[:-1].strip("/")
         pose_topic = "etddf/estimate" + rospy.get_namespace()[:-1]
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
@@ -126,6 +125,8 @@ class SonarAssociator:
         # Construct agent_dict
         agent_dict = {}
         for a in self.agent_poses:
+            # if a == self.my_name: # 
+            #     continue
             position = self.agent_poses[a].pose.position
             position = np.array([[position.x],[position.y],[position.z]])
             cov = np.reshape(self.agent_poses[a].covariance, (6,6))
@@ -149,13 +150,14 @@ class SonarAssociator:
         self.cuprint("Message received")
 
         agent_dict = self._get_agent_dict()
+        my_pos = self.agent_poses[self.my_name].pose.position
 
         # Construct meas np array, linearizing
         new_msg = deepcopy(msg)
         new_msg.targets = []
         for st in msg.targets:
-            meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad)
-            meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad)
+            meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad) + my_pos.x
+            meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad) + my_pos.y
             meas = np.array([[meas_x], [meas_y]])
 
             bearing_std = np.sqrt( self.bearing_var )
@@ -165,6 +167,12 @@ class SonarAssociator:
 
             agent = self.associator.associate(agent_dict, meas, R, t.secs)
             self.prototrack = self.associator.get_proto()
+
+            print("Sonar meas information")
+            print(self.orientation_rad)
+            print(st)
+            print(meas)
+            print(agent_dict)
 
             if agent != "none" and agent != "proto":
                 self.cuprint("Meas associated: {}".format(agent))
@@ -185,56 +193,60 @@ class SonarAssociator:
 if __name__ == "__main__":
     rospy.init_node("sonar_association")
     d = SonarAssociator()
-    # rospy.spin()
 
-    # LAUNCH TESTS
-    print("Launching tests")
+    debug = False
+    if not debug:
+        rospy.spin()
+    else:
 
-    # Test associating the measurement with a blue agent
-    o = Odometry() # main agent at zero-zero
-    cov = np.eye(6)
-    o.pose.covariance = list( cov.flatten() )
-    o.pose.pose.orientation.w = 1
-    d.pose_callback(o)
+        # LAUNCH TESTS
+        print("Launching tests")
 
-    # 2nd blue agent at 5,5
-    o2 = Odometry()
-    o2.pose.pose.position.x = 5
-    o2.pose.pose.position.y = 5
-    o2.pose.covariance = list( cov.flatten() )
-    d.blue_team_callback(o2, "bluerov2_5")
+        # Test associating the measurement with a blue agent
+        o = Odometry() # main agent at zero-zero
+        cov = np.eye(6)
+        o.pose.covariance = list( cov.flatten() )
+        o.pose.pose.orientation.w = 1
+        d.pose_callback(o)
 
-    o3 = Odometry()
-    o3.pose.pose.position.x = 0
-    o3.pose.pose.position.y = 0
-    cov = np.eye(6) * 10000
-    o3.pose.covariance = list( cov.flatten() )
-    d.red_agent_callback(o3)
+        # 2nd blue agent at 5,5
+        o2 = Odometry()
+        o2.pose.pose.position.x = 5
+        o2.pose.pose.position.y = 5
+        o2.pose.covariance = list( cov.flatten() )
+        d.blue_team_callback(o2, "bluerov2_5")
 
-    d.scan_angle_callback( Float64( np.arctan2(5,5) ) )
+        o3 = Odometry()
+        o3.pose.pose.position.x = 0
+        o3.pose.pose.position.y = 0
+        cov = np.eye(6) * 10000
+        o3.pose.covariance = list( cov.flatten() )
+        d.red_agent_callback(o3)
 
-    # Test measurement generation
-    stl = SonarTargetList()
-    stl.header.stamp = rospy.get_rostime()
-    st = SonarTarget()
-    st.range_m = np.linalg.norm([5,5])
-    st.bearing_rad = np.arctan2(5,5)
-    st.range_variance = d.range_var
-    st.bearing_variance = d.bearing_var
-    stl.targets.append(st)
+        d.scan_angle_callback( Float64( np.arctan2(5,5) ) )
 
-    d.sonar_callback(stl) # CHECK THAT WE ASSOCIATED  WITH BLUEROV2_5
+        # Test measurement generation
+        stl = SonarTargetList()
+        stl.header.stamp = rospy.get_rostime()
+        st = SonarTarget()
+        st.range_m = np.linalg.norm([5,5])
+        st.bearing_rad = np.arctan2(5,5)
+        st.range_variance = d.range_var
+        st.bearing_variance = d.bearing_var
+        stl.targets.append(st)
 
-    # Test the prototrack
-    stl.targets = []
-    st = SonarTarget()
-    st.range_m = np.linalg.norm([-5,-5])
-    st.bearing_rad = np.arctan2(-5,-5)
-    st.range_variance = d.range_var
-    st.bearing_variance = d.bearing_var
-    stl.targets.append(st) # Start a prototrack
-    stl.targets.append(st)
-    stl.targets.append(st) # Check that we associate with red agent
-    d.sonar_callback(stl)
+        d.sonar_callback(stl) # CHECK THAT WE ASSOCIATED  WITH BLUEROV2_5
 
-    rospy.spin()
+        # Test the prototrack
+        stl.targets = []
+        st = SonarTarget()
+        st.range_m = np.linalg.norm([-5,-5])
+        st.bearing_rad = np.arctan2(-5,-5)
+        st.range_variance = d.range_var
+        st.bearing_variance = d.bearing_var
+        stl.targets.append(st) # Start a prototrack
+        stl.targets.append(st)
+        stl.targets.append(st) # Check that we associate with red agent
+        d.sonar_callback(stl)
+
+        rospy.spin()
