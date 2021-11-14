@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from copy import deepcopy
 import tf
 import rospy
 from nav_msgs.msg import Odometry
@@ -78,6 +79,8 @@ class SonarAssociator:
             agent_dict[a] = [position, cov]
 
         # Construct meas np array, linearizing
+        new_msg = deepcopy(msg)
+        new_msg.targets = []
         for st in msg.targets:
             meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad)
             meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad)
@@ -92,13 +95,16 @@ class SonarAssociator:
 
             if agent != "none" and not proto:
                 self.cuprint("Meas associated: {}".format(agent))
+                st.associated = True
+                st.id = agent
+                new_msg.targets.append( st )
 
+        # Publish new msg
+        if new_msg.targets:
+            print("Publishing")
+            self.pub.publish( new_msg )
 
-            # TODO over approximate the uncertainty based the bearing var
-            # Attemept to associate the measurement with a blue agent!
             # Add the sonar controller into the mix!
-
-        pass
 
 if __name__ == "__main__":
     rospy.init_node("sonar_association")
@@ -129,8 +135,7 @@ if __name__ == "__main__":
     st.bearing_variance = d.bearing_var
     stl.targets.append(st)
 
-    d.sonar_callback(stl)
-    # CHECK THAT WE ASSOCIATED  WITH BLUEROV2_5
+    d.sonar_callback(stl) # CHECK THAT WE ASSOCIATED  WITH BLUEROV2_5
 
     # Test the prototrack
 
