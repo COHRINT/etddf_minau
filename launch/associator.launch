@@ -2,13 +2,13 @@
 
     <arg name="blue_team_names" default="[bluerov2_5]" />
     <arg name="blue_team_positions_enu" default="[]" /> 
-    <arg name="red_agent_name" default="" />
+    <arg name="red_agent_name" default="red_actor_4" />
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
 
     <node name="associator_node" pkg="etddf_minau" type="associator_node.py" output="screen">
         <param name="time_to_drop" value="20" />
         <param name="lost_agent_unc" value="10" /> <!-- Std to consider an agent lost -->
-        <param name="proto_track_points" value="2" /> <!-- Number of prototrack points to associator a lost agent -->
+        <param name="proto_track_points" value="3" /> <!-- Number of prototrack points to associator a lost agent -->
         <param name="red_agent_name" value="$(arg red_agent_name)" />
         <param name="bearing_var" value="0.1"/> <!-- 15 deg std -->
         <param name="range_var" value="0.1"/> <!-- 0.3m std -->

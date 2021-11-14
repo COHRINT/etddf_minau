@@ -77,7 +77,7 @@ class Associator:
             agent_name = agents[min_index]
             # Attempt to associate with an agent
             if vals[min_index] < np.linalg.norm([association_sigma,association_sigma]): # is better than 2 sigma in each direction
-                return agent_name, False
+                return agent_name
 
         if len(search_agents) > 0:
             # Can't associate with an agent --> Try to associate with a prototrack
@@ -104,7 +104,7 @@ class Associator:
 
                         if len(search_agents) > 1:
                             print("Cannot associate due to multiple agents being lost: " + str(search_agents))
-                            return "proto", False
+                            return "proto"
                         else:
                             # Associate this prototrack with the only lost agent!
                             associated_agent = search_agents[0]
@@ -112,17 +112,18 @@ class Associator:
 
                             # Remove the prototrack
                             del self.proto_tracks[agent_name]
-                            return associated_agent, True
+                            return associated_agent
                     else:
-                        return "proto", False
+                        return "proto"
             
             # Can't associate with anything? --> Start a prototrack
             name = "proto_track_" + str(self.proto_track_naming_num)
             print("Starting " + name)
             self.proto_tracks[name] = [meas, R, 1, t, [[meas, t, 0]]]
             self.proto_track_naming_num += 1
-            return "proto", False
+            return "proto"
         else:
+            print("Can't associate detection with tracked agents and no search agents.")
             return "none", False
 
     def clean_protos(self, t):

@@ -74,7 +74,6 @@ class SonarAssociator:
             position = self.agent_poses[a].pose.position
             position = np.array([[position.x],[position.y],[position.z]])
             cov = np.reshape(self.agent_poses[a].covariance, (6,6))
-            cov = np.eye(6) # TODO remove
             cov = cov[:3,:3]
             agent_dict[a] = [position, cov]
 
@@ -91,9 +90,9 @@ class SonarAssociator:
             R = np.array( [[unc_x, 0],[0, unc_x]])
             t = msg.header.stamp
 
-            agent, proto = self.associator.associate(agent_dict, meas, R, t)
+            agent = self.associator.associate(agent_dict, meas, R, t.secs)
 
-            if agent != "none" and not proto:
+            if agent != "none" and agent != "proto":
                 self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
@@ -116,6 +115,8 @@ if __name__ == "__main__":
 
     # Test associating the measurement with a blue agent
     o = Odometry() # main agent at zero-zero
+    cov = np.eye(6)
+    o.pose.covariance = list( cov.flatten() )
     o.pose.pose.orientation.w = 1
     d.pose_callback(o)
 
@@ -123,7 +124,15 @@ if __name__ == "__main__":
     o2 = Odometry()
     o2.pose.pose.position.x = 5
     o2.pose.pose.position.y = 5
+    o2.pose.covariance = list( cov.flatten() )
     d.blue_team_callback(o2, "bluerov2_5")
+
+    o3 = Odometry()
+    o3.pose.pose.position.x = 0
+    o3.pose.pose.position.y = 0
+    cov = np.eye(6) * 10000
+    o3.pose.covariance = list( cov.flatten() )
+    d.red_agent_callback(o3)
 
     # Test measurement generation
     stl = SonarTargetList()
@@ -138,5 +147,15 @@ if __name__ == "__main__":
     d.sonar_callback(stl) # CHECK THAT WE ASSOCIATED  WITH BLUEROV2_5
 
     # Test the prototrack
+    stl.targets = []
+    st = SonarTarget()
+    st.range_m = np.linalg.norm([-5,-5])
+    st.bearing_rad = np.arctan2(-5,-5)
+    st.range_variance = d.range_var
+    st.bearing_variance = d.bearing_var
+    stl.targets.append(st) # Start a prototrack
+    stl.targets.append(st)
+    stl.targets.append(st) # Check that we associate with red agent
+    d.sonar_callback(stl)
 
     rospy.spin()
