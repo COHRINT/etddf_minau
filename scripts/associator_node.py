@@ -5,10 +5,11 @@ import tf
 import rospy
 from nav_msgs.msg import Odometry
 from minau.msg import SonarTargetList, SonarTarget
+from ping360_sonar.msg import SonarSettings
 from cuprint.cuprint import CUPrint
 from deltatier.associator import Associator
 import numpy as np
-from std_msgs.msg import Float64
+from std_msgs.msg import UInt16
 from deltatier.sonar_controller import scan_control
 from deltatier.normalize_angle import normalize_angle
 
@@ -22,6 +23,7 @@ CHANGES TO SONAR NODE
 1) Change from rosservice to pub/sub
 2) Pub when complete a scan
 3) Add Correct message type to this script for sonar configuration
+4) HITL test
 
 Scenario
 1 configured for 360 degree scan
@@ -54,10 +56,10 @@ class SonarAssociator:
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
             self.ping_thresh = rospy.get_param("~ping_thresh")
             self.scan_angle = None
-            rospy.Subscriber("sonar_processing/scan_complete_last_angle", Float64, self.scan_angle_callback)
+            rospy.Subscriber("sonar_processing/scan_complete_last_angle", UInt16, self.scan_angle_callback)
             # rospy.wait_for_message( "sonar_processing/scan_complete_last_angle", Float64 )
             self.prototrack = None
-            # self.sonar_control_pub = rospy.Publisher("sonar/set_scan_angle", )
+            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", )
 
         self.bearing_var = rospy.get_param("~bearing_var")
         self.range_var = rospy.get_param("~range_var")
@@ -103,19 +105,19 @@ class SonarAssociator:
                 scan_size_rad, self.ping_thresh, self.lost_agent_unc)
             self.set_sonar_scan(angle, scan_360)
 
+    """ These functions align with the real gradian angle in which the ping360 scans """
     def _gradian2radian(self, grad):
-        return normalize_angle( (2*np.pi / 400) * grad )
-
+        return normalize_angle( (np.pi / 200.0)*(200 - grad) )
     def _radian2gradian(self, rad):
-        return int( np.mod( (400 / (2*np.pi)) * rad, 400 ) )
+        return np.mod( 200 - (200/np.pi)*rad, 400)
 
     def set_sonar_scan(self, start_angle, scan_360):
         start_grad = self._radian2gradian(start_angle)
         if scan_360:
             end_grad = np.mod( start_grad + 399, 400)
         else:
-            scan_size_rad = np.radians(self.scan_size_deg)
-            end_grad = np.mod( start_grad + self._radian2gradian(scan_size_rad), 400 )
+            scan_size_grad = (200 / np.pi) * np.radians(self.scan_size_deg)
+            end_grad = np.mod( start_grad + scan_size_grad, 400 )
 
         print("New sonar configuration: {}".format([start_grad, end_grad]))
 
@@ -223,7 +225,7 @@ if __name__ == "__main__":
         o3.pose.covariance = list( cov.flatten() )
         d.red_agent_callback(o3)
 
-        d.scan_angle_callback( Float64( np.arctan2(5,5) ) )
+        d.scan_angle_callback( UInt16( np.arctan2(5,5) ) )
 
         # Test measurement generation
         stl = SonarTargetList()
