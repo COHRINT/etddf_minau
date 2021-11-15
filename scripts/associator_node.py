@@ -59,7 +59,7 @@ class SonarAssociator:
             rospy.Subscriber("sonar_processing/scan_complete_last_angle", UInt16, self.scan_angle_callback)
             # rospy.wait_for_message( "sonar_processing/scan_complete_last_angle", Float64 )
             self.prototrack = None
-            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", )
+            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
 
         self.bearing_var = rospy.get_param("~bearing_var")
         self.range_var = rospy.get_param("~range_var")
@@ -120,8 +120,7 @@ class SonarAssociator:
             end_grad = np.mod( start_grad + scan_size_grad, 400 )
 
         print("New sonar configuration: {}".format([start_grad, end_grad]))
-
-        # self.sonar_control_pub.publish()
+        self.sonar_control_pub.publish( SonarSettings(start_grad, end_grad) )
         
     def _get_agent_dict(self):
         # Construct agent_dict
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     rospy.init_node("sonar_association")
     d = SonarAssociator()
 
-    debug = False
+    debug = True
     if not debug:
         rospy.spin()
     else:
