@@ -50,17 +50,6 @@ class SonarAssociator:
         proto_Q = np.array([[process_noise, 0],[0, process_noise]])
         self.associator = Associator(time_to_drop, self.lost_agent_unc, proto_track_points, proto_Q)
 
-        # Sonar Controller Params
-        self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
-        if self.enable_sonar_control:
-            self.scan_size_deg = rospy.get_param("~scan_size_deg")
-            self.ping_thresh = rospy.get_param("~ping_thresh")
-            self.scan_angle = None
-            rospy.Subscriber("sonar_processing/scan_complete_last_angle", UInt16, self.scan_angle_callback)
-            # rospy.wait_for_message( "sonar_processing/scan_complete_last_angle", Float64 )
-            self.prototrack = None
-            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
-
         self.bearing_var = rospy.get_param("~bearing_var")
         self.range_var = rospy.get_param("~range_var")
 
@@ -76,13 +65,33 @@ class SonarAssociator:
         pose_topic = "etddf/estimate" + rospy.get_namespace()[:-1]
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
-        # rospy.wait_for_message(pose_topic, Odometry) # TODO add back in
+        rospy.wait_for_message(pose_topic, Odometry) # TODO add back in
+
+        # Debug purposes
+        # o = Odometry() # main agent at zero-zero
+        # cov = np.eye(6)
+        # o.pose.covariance = list( cov.flatten() )
+        # o.pose.pose.orientation.w = 1
+        # self.pose_callback(o)
         self.cuprint("Orientation found")
 
         self.red_agent_name = rospy.get_param("~red_agent_name")
-        rospy.Subscriber("etddf/estimate/" + self.red_agent_name, Odometry, self.red_agent_callback)
+        if self.red_agent_name != "":
+            rospy.Subscriber("etddf/estimate/" + self.red_agent_name, Odometry, self.red_agent_callback)
 
         self.pub = rospy.Publisher("sonar_processing/target_list/associated", SonarTargetList, queue_size=10)
+
+        # Sonar Controller Params
+        self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
+        if self.enable_sonar_control:
+            self.scan_size_deg = rospy.get_param("~scan_size_deg")
+            self.ping_thresh = rospy.get_param("~ping_thresh")
+            self.scan_angle = None
+            rospy.Subscriber("ping360_node/sonar/scan_complete", UInt16, self.scan_angle_callback)
+            self.cuprint("Waiting for scan to complete")
+            rospy.wait_for_message( "ping360_node/sonar/scan_complete", UInt16 )
+            self.prototrack = None
+            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
 
         sonar_topic = "sonar_processing/target_list"
         rospy.Subscriber(sonar_topic, SonarTargetList, self.sonar_callback)
@@ -103,6 +112,8 @@ class SonarAssociator:
             angle, scan_360 = scan_control(
                 self.scan_angle, my_pos, agent_dict, self.prototrack, 
                 scan_size_rad, self.ping_thresh, self.lost_agent_unc)
+            if scan_360:
+                print("Scanning Full Sweep 360")
             self.set_sonar_scan(angle, scan_360)
 
     """ These functions align with the real gradian angle in which the ping360 scans """
@@ -112,12 +123,12 @@ class SonarAssociator:
         return np.mod( 200 - (200/np.pi)*rad, 400)
 
     def set_sonar_scan(self, start_angle, scan_360):
-        start_grad = self._radian2gradian(start_angle)
+        start_grad = int(self._radian2gradian(start_angle))
         if scan_360:
-            end_grad = np.mod( start_grad + 399, 400)
+            end_grad = int(np.mod( start_grad + 399, 400))
         else:
             scan_size_grad = (200 / np.pi) * np.radians(self.scan_size_deg)
-            end_grad = np.mod( start_grad + scan_size_grad, 400 )
+            end_grad = int(np.mod( start_grad + scan_size_grad, 400 ))
 
         print("New sonar configuration: {}".format([start_grad, end_grad]))
         self.sonar_control_pub.publish( SonarSettings(start_grad, end_grad) )
@@ -126,8 +137,6 @@ class SonarAssociator:
         # Construct agent_dict
         agent_dict = {}
         for a in self.agent_poses:
-            # if a == self.my_name: # 
-            #     continue
             position = self.agent_poses[a].pose.position
             position = np.array([[position.x],[position.y],[position.z]])
             cov = np.reshape(self.agent_poses[a].covariance, (6,6))
@@ -142,7 +151,10 @@ class SonarAssociator:
         self.agent_poses[self.my_name] = msg.pose
     
     def red_agent_callback(self, msg):
-        self.agent_poses[self.red_agent_name] = msg.pose
+        if self.red_agent_name != "":
+            self.agent_poses[self.red_agent_name] = msg.pose
+        else:
+            self.cuprint("Associator received pose for red agent but was not configured to associate with it")
 
     def blue_team_callback(self, msg, agent_name):
         self.agent_poses[agent_name] = msg.pose
@@ -150,8 +162,9 @@ class SonarAssociator:
     def sonar_callback(self, msg):
         self.cuprint("Message received")
 
-        agent_dict = self._get_agent_dict()
+        agent_dict = self._get_agent_dict().copy()
         my_pos = self.agent_poses[self.my_name].pose.position
+        del agent_dict[self.my_name] # so as to not associate with ourselves
 
         # Construct meas np array, linearizing
         new_msg = deepcopy(msg)
@@ -169,11 +182,11 @@ class SonarAssociator:
             agent = self.associator.associate(agent_dict, meas, R, t.secs)
             self.prototrack = self.associator.get_proto()
 
-            print("Sonar meas information")
-            print(self.orientation_rad)
-            print(st)
-            print(meas)
-            print(agent_dict)
+            # print("Sonar meas information")
+            # print(self.orientation_rad)
+            # print(st)
+            # print(meas)
+            # print(agent_dict)
 
             if agent != "none" and agent != "proto":
                 self.cuprint("Meas associated: {}".format(agent))
@@ -188,14 +201,13 @@ class SonarAssociator:
 
         # Publish new msg
         if new_msg.targets:
-            print("Publishing")
             self.pub.publish( new_msg )
 
 if __name__ == "__main__":
     rospy.init_node("sonar_association")
     d = SonarAssociator()
 
-    debug = True
+    debug = False
     if not debug:
         rospy.spin()
     else:
@@ -204,16 +216,12 @@ if __name__ == "__main__":
         print("Launching tests")
 
         # Test associating the measurement with a blue agent
-        o = Odometry() # main agent at zero-zero
-        cov = np.eye(6)
-        o.pose.covariance = list( cov.flatten() )
-        o.pose.pose.orientation.w = 1
-        d.pose_callback(o)
 
         # 2nd blue agent at 5,5
         o2 = Odometry()
         o2.pose.pose.position.x = 5
         o2.pose.pose.position.y = 5
+        cov = np.eye(6)
         o2.pose.covariance = list( cov.flatten() )
         d.blue_team_callback(o2, "bluerov2_5")
 
@@ -224,7 +232,7 @@ if __name__ == "__main__":
         o3.pose.covariance = list( cov.flatten() )
         d.red_agent_callback(o3)
 
-        d.scan_angle_callback( UInt16( np.arctan2(5,5) ) )
+        # d.scan_angle_callback( UInt16( np.arctan2(5,5) ) )
 
         # Test measurement generation
         stl = SonarTargetList()
