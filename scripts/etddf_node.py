@@ -36,8 +36,6 @@ __version__ = "3.0"
 
 NUM_OWNSHIP_STATES = 6
 
-TOPSIDE_NAME = "topside"
-
 class ETDDF_Node:
 
     def __init__(self, 
@@ -63,8 +61,11 @@ class ETDDF_Node:
         self.default_meas_variance = default_meas_variance
         self.my_name = my_name
         self.landmark_dict = rospy.get_param("~landmarks", {})
+        self.topside_name = rospy.get_param("mission_config/surface_beacon_name")
+        
 
         self.cuprint = CUPrint(rospy.get_name())
+        self.cuprint(self.topside_name)
         
         if rospy.get_param("~simple_sharing"):
             self.cuprint("Sharing most recent")
@@ -98,7 +99,7 @@ class ETDDF_Node:
 
         self.asset_pub_dict = {}
         for asset in self.asset2id.keys():
-            if TOPSIDE_NAME in asset:
+            if self.topside_name in asset:
                 continue
             self.asset_pub_dict[asset] = rospy.Publisher("etddf/estimate/" + asset, Odometry, queue_size=10)        
 
@@ -114,6 +115,17 @@ class ETDDF_Node:
 
         # Modem & Measurement Packages
         rospy.Subscriber("etddf/packages_in", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
+
+        # Get modem corrections
+        modem_az_bias = rospy.get_param("mission_config/modem_az/bias") # Just configure global pose
+        modem_az_std_deg = np.sqrt( rospy.get_param("mission_config/modem_az/var") )
+        self.modem_az_var = np.radians(modem_az_std_deg) ** 2
+        self.modem_range_bias = rospy.get_param("mission_config/modem_range/bias")
+        self.modem_range_var = rospy.get_param("mission_config/modem_range/var")
+        self.surface_beacon_pose = rospy.get_param("mission_config/surface_beacon_position")
+        self.surface_beacon_pose.append( np.radians( modem_az_bias) )
+        self.cuprint(str(self.modem_az_var))
+        self.cuprint(str(self.surface_beacon_pose))
 
         if self.use_control_input:
             raise NotImplementedError("Control input")
@@ -134,21 +146,13 @@ class ETDDF_Node:
         rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
         # Wait for our first strapdown msg
-        # self.cuprint("loaded, sleeping for RL to correct...")
-        # rospy.sleep(15) # Wait for RL to correct
-        # self.cuprint("Finally loaded")
+        self.cuprint("loaded, sleeping for RL to correct...")
+        rospy.sleep(10) # Wait for RL to correct
 
         # Sonar Subscription
         if rospy.get_param("~measurement_topics/sonar") != "None":
             self.cuprint("Subscribing to sonar")
             rospy.Subscriber(rospy.get_param("~measurement_topics/sonar"), SonarTargetList, self.sonar_callback)
-
-        
-
-    def orientation_estimate_callback(self, odom):
-        self.meas_lock.acquire()
-        
-        self.meas_lock.release()
 
     def sonar_callback(self, sonar_list):
         self.cuprint("Receiving sonar meas!!")
@@ -316,7 +320,7 @@ class ETDDF_Node:
     def publish_estimates(self, timestamp):
         ne = NetworkEstimate()
         for asset in self.asset2id.keys():
-            if TOPSIDE_NAME in asset:
+            if self.topside_name in asset:
                 continue
             if "red" in asset and not self.red_asset_found:
                 continue
@@ -368,7 +372,7 @@ class ETDDF_Node:
         self.update_lock.acquire()
         # Modem Meas taken by topside
         
-        if msg.src_asset == TOPSIDE_NAME:
+        if msg.src_asset == self.topside_name:
             self.cuprint("Receiving Surface Modem Measurements")
             modem_indices = []
             for meas in msg.measurements:
@@ -377,16 +381,14 @@ class ETDDF_Node:
                     rospy.logerr("Ignoring Modem Elevation Measurement since we have depth measurements")
                     continue
                 elif meas.meas_type == "modem_azimuth":
-                    # meas.global_pose = list(meas.global_pose)
-                    meas.global_pose = [0,0,0,0]
-                    # self.cuprint("azimuth: " + str(meas.data))
-                    meas.data = (meas.data * np.pi) / 180
-                    meas.variance = self.default_meas_variance["modem_azimuth"]
+                    meas.global_pose = self.surface_beacon_pose
+                    meas.data = np.radians(meas.data)
+                    meas.variance = self.modem_az_var
                 elif meas.meas_type == "modem_range":
-                    # meas.global_pose = list(meas.global_pose)
-                    meas.global_pose = [0,0,0,0]
-                    # self.cuprint("range: " + str(meas.data))
-                    meas.variance = self.default_meas_variance["modem_range"]
+                    meas.global_pose = self.surface_beacon_pose
+                    meas.variance = self.modem_range_var
+                    meas.data -= self.modem_range_bias
+                print(meas)
                 ind = self.filter.add_meas(meas, common=True)
                 modem_indices.append(ind)
             self.filter.catch_up(min(modem_indices))
@@ -437,8 +439,9 @@ def get_indices_from_asset_names(blue_team):
         asset2id[asset] = next_index
         next_index += 1
 
-    if my_name != TOPSIDE_NAME:
-        asset2id[TOPSIDE_NAME] = -1 # arbitrary negative number
+    topside_name = rospy.get_param("mission_config/surface_beacon_name")
+    if my_name != topside_name:
+        asset2id[topside_name] = -1 # arbitrary negative number
 
     return asset2id
 
@@ -572,10 +575,11 @@ if __name__ == "__main__":
     delta_tiers = rospy.get_param("~delta_tiers")
     blue_team_names = rospy.get_param("~blue_team_names")
     blue_team_positions = rospy.get_param("~blue_team_positions")
+    topside_name = rospy.get_param("mission_config/surface_beacon_name")
 
     # Don't track topside if it isn't this agent
-    if my_name != TOPSIDE_NAME and TOPSIDE_NAME in blue_team_names:
-        ind = blue_team_names.index(TOPSIDE_NAME)
+    if my_name != topside_name and topside_name in blue_team_names:
+        ind = blue_team_names.index(topside_name)
         if ind >= 0:
             blue_team_names.pop(ind)
             blue_team_positions.pop(ind)
@@ -585,7 +589,7 @@ if __name__ == "__main__":
     delta_codebook_table = get_delta_codebook_table()
     buffer_size = rospy.get_param("~buffer_space/capacity")
     meas_space_table = get_meas_space_table()
-    if my_name != TOPSIDE_NAME:
+    if my_name != topside_name:
         num_assets = len(asset2id) - 1 # subtract topside
     else:
         num_assets = len(asset2id)

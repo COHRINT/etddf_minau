@@ -25,12 +25,4 @@
         <param name="simple_sharing" value="$(arg simple_sharing)" />
     </node>
 
-    <!-- Launch the association node -->
-    <node name="sonar_association" pkg="etddf_minau" type="sonar_association.py" output="screen">
-        <rosparam command="load" file="$(arg landmark_file)" />
-        <rosparam param="blue_team_names" subst_value="True">$(arg blue_team_names)</rosparam> 
-        <rosparam param="red_team_names" subst_value="True">$(arg red_team_names)</rosparam> 
-        <param name="threshold" value="1" />
-    </node>
-
 </launch>
