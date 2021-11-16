@@ -46,12 +46,12 @@ class SonarAssociator:
         time_to_drop = rospy.get_param("~time_to_drop")
         self.lost_agent_unc = rospy.get_param("~lost_agent_unc")
         proto_track_points = rospy.get_param("~proto_track_points")
-        process_noise = rospy.get_param("~process_noise/blueteam/x")
+        process_noise = rospy.get_param("~position_process_noise")
         proto_Q = np.array([[process_noise, 0],[0, process_noise]])
         self.associator = Associator(time_to_drop, self.lost_agent_unc, proto_track_points, proto_Q)
 
-        self.bearing_var = rospy.get_param("~bearing_var")
-        self.range_var = rospy.get_param("~range_var")
+        self.bearing_var = rospy.get_param("~force_sonar_az_var")
+        self.range_var = rospy.get_param("~force_sonar_range_var")
 
         # Subscribe to all blue team poses
         blue_team = rospy.get_param("~blue_team_names")
@@ -88,10 +88,10 @@ class SonarAssociator:
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
             self.ping_thresh = rospy.get_param("~ping_thresh")
             self.scan_angle = None
+            self.prototrack = None
             rospy.Subscriber("ping360_node/sonar/scan_complete", UInt16, self.scan_angle_callback)
             self.cuprint("Waiting for scan to complete")
             rospy.wait_for_message( "ping360_node/sonar/scan_complete", UInt16 )
-            self.prototrack = None
             self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
 
         sonar_topic = "sonar_processing/target_list"
