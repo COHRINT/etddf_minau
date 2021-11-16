@@ -275,7 +275,7 @@ class ETDDF_Node:
                     agent = meas.measured_asset
                     agent_id = self.blue_agent_names.index(agent)
                     R = self.meas_variances["modem_range"]
-                    self.kf.filter_azimuth_from_untracked( meas.data, R, modem_loc, agent_id, index=None)
+                    self.kf.filter_range_from_untracked( meas.data, R, modem_loc, agent_id, index=None)
 
         elif self.is_deltatier:
             raise NotImplementedError("DT is not supported yet")
