@@ -74,7 +74,7 @@ class SonarAssociator:
         # o.pose.covariance = list( cov.flatten() )
         # o.pose.pose.orientation.w = 1
         # self.pose_callback(o)
-        self.cuprint("Orientation found")
+        # self.cuprint("Orientation found")
 
         self.red_agent_name = rospy.get_param("~red_agent_name")
         if self.red_agent_name != "":
@@ -171,12 +171,13 @@ class SonarAssociator:
         new_msg = deepcopy(msg)
         new_msg.targets = []
         for st in msg.targets:
+            inertial_bearing = st.bearing_rad + self.orientation_rad
+            self.cuprint("Associating r: {} az: {}".format(round(st.range_m,1), round(np.degrees(inertial_bearing),1)))
 
-            st.bearing_rad += self.orientation_rad # convert the orientation to odom frame
-
-            meas_x = st.range_m * np.cos(st.bearing_rad)
-            meas_y = st.range_m * np.sin(st.bearing_rad)
+            meas_x = st.range_m * np.cos(inertial_bearing)
+            meas_y = st.range_m * np.sin(inertial_bearing)
             meas = np.array([[meas_x], [meas_y]])
+            self.cuprint("World coords: {}".format(meas.flatten()))
 
             bearing_std = np.sqrt( self.bearing_var )
             unc_x = ( st.range_m * bearing_std ) ** 2

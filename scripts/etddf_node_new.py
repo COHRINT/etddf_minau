@@ -115,6 +115,10 @@ class ETDDF_Node:
             else:
                 R_az = self.meas_variances["sonar_az"]
 
+            rounded_range_meas = round(range_meas, 1)
+            rounded_azimuth_meas = round(np.degrees(azimuth_meas),1)
+            self.cuprint("{} r: {} az: {} (deg)".format(st.id, rounded_range_meas, rounded_azimuth_meas))
+
             self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
             self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
 
