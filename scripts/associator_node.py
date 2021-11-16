@@ -31,7 +31,7 @@ Scenario
 3 provide upper and lower bounds
 4 I should check if anything changed and only update then? 
 
-Whenever we get a detection:
+# TODO try first deltatier simple with stack
 
 """
 
@@ -73,7 +73,8 @@ class SonarAssociator:
             rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
 
         # Get my pose
-        pose_topic = "etddf/estimate" + rospy.get_namespace()[:-1]
+        self.my_name = rospy.get_namespace()[:-1].strip("/")
+        pose_topic = "odometry/filtered/odom"
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
         # rospy.wait_for_message(pose_topic, Odometry) # TODO add back in
@@ -157,8 +158,11 @@ class SonarAssociator:
         new_msg = deepcopy(msg)
         new_msg.targets = []
         for st in msg.targets:
-            meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad) + my_pos.x
-            meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad) + my_pos.y
+
+            st.bearing_rad += self.orientation_rad # convert the orientation to odom frame
+
+            meas_x = st.range_m * np.cos(st.bearing_rad)
+            meas_y = st.range_m * np.sin(st.bearing_rad)
             meas = np.array([[meas_x], [meas_y]])
 
             bearing_std = np.sqrt( self.bearing_var )
@@ -179,6 +183,8 @@ class SonarAssociator:
                 self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
+                st.bearing_variance = self.bearing_var
+                st.range_variance = self.range_var
                 new_msg.targets.append( st )
             
             self.scan_angle = st.bearing_rad
