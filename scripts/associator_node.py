@@ -62,7 +62,7 @@ class SonarAssociator:
             rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
 
         # Get my pose
-        pose_topic = "etddf/estimate" + rospy.get_namespace()[:-1]
+        pose_topic = "odometry/filtered/odom"
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
         rospy.wait_for_message(pose_topic, Odometry) # TODO add back in

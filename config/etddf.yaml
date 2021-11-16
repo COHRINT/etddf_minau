@@ -61,8 +61,8 @@ initial_uncertainty:
     z_vel: 0.1
   # for asset positions provided to us through roslaunch params
   known_starting_position: 
-    x: 2.0
-    y: 2.0
+    x: 20.0
+    y: 20.0
     z: 0.1
     x_vel: 0.1
     y_vel: 0.1
