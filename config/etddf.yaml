@@ -1,16 +1,25 @@
-## Multipliers for Delta tiers
-## increases a measurements threshold to be added to the buffer by the given amount
-delta_tiers: [1,2,3,4,5,6,7,8,9,10]
-
-strapdown_topic: odometry/filtered/odom # To disable, set to None
+is_deltatier: false
+use_strapdown: true
+correct_strapdown: false # will correct strapdown only if the position is known
+strapdown_correction_period: 10 # how often to correct the strapdown filter
+fast_ci: false
+force_modem_pose: [0,-3,0,0] # empty for not forcing pose. x,y,z, yaw_degrees
 
 ### Buffer space configurations ###
-buffer_space:
-  capacity: 29 # Total capacity
+delta_tiers: [1,2,3,4,5,6,7,8,9,10]
+buffer_space: 29
+sonar_range_start_et_delta: 0.0
+sonar_az_start_et_delta: 0.0
+
+# Force measurement noise
+force_sonar_range_var: 0.3 # -1 for no forcing
+force_sonar_az_var: 0.3
+force_modem_range_var: 0.3
+force_modem_az_var: 0.5
 
 ### Process Noise Configurations ###
 position_process_noise: 0.1
 velocity_process_noise: 0.0
 
 known_position_uncertainty: 1.0
-unknown_position_uncertainty: 1000.0
+unknown_position_uncertainty: 10000.0

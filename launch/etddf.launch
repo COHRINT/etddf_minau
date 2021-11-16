@@ -1,36 +1,19 @@
 <launch>
-    <arg name="my_name" default="bluerov2_3" />
-    <arg name="blue_team_names" default="[]" />
-    <arg name="landmark_file" default="$(find etddf_minau)/config/landmarks_dummy.yaml" />
-    <!-- <arg name="simple_sharing" default="True" /> -->
-    <arg name="simple_sharing" default="False" />
+    <arg name="my_name" default="dory" />
+    <arg name="blue_team_names" default="[dory, guppy]" /> <!-- Includes this agent -->
+    <arg name="blue_team_positions_enu" default="[[0.01,0.01,0.01],[]]" /> <!-- Includes this agent, can be blank for unknown starting position -->
 
-    <!-- not required, list of lists, index of outer 
-    list corresponds to index in blue_team_names -->
-    <arg name="blue_team_positions_enu" default="[]" /> 
-
-    <arg name="red_team_names" default="[]" />
+    <arg name="topside_name" default="topside" />
+    <arg name="red_team_name" default="" />
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
-    <arg name="starting_position_enu" default="[0,0,0]" /> <!-- [x,y,z] -->
-    
-    <node name="etddf" pkg="etddf_minau" type="etddf_node.py" output="screen">
+
+    <node name="etddf" pkg="etddf_minau" type="etddf_node_new.py" output="screen">
         <param name="my_name" value="$(arg my_name)" />
         <rosparam param="blue_team_positions" subst_value="True">$(arg blue_team_positions_enu)</rosparam> 
         <rosparam param="blue_team_names" subst_value="True">$(arg blue_team_names)</rosparam> 
-        <rosparam param="red_team_names" subst_value="True">$(arg red_team_names)</rosparam> 
-        <rosparam param="starting_position" subst_value="True">$(arg starting_position_enu)</rosparam> 
+        <param name="topside_name" value="$(arg topside_name)" />
+        <param name="red_team_name" value="$(arg red_team_name)" />
         <rosparam command="load" file="$(arg config_file)" />        
-        <rosparam command="load" file="$(find etddf_minau)/config/measurements.yaml" />
-        <rosparam command="load" file="$(arg landmark_file)" />
-        <param name="simple_sharing" value="$(arg simple_sharing)" />
-    </node>
-
-    <!-- Launch the association node -->
-    <node name="sonar_association" pkg="etddf_minau" type="sonar_association.py" output="screen">
-        <rosparam command="load" file="$(arg landmark_file)" />
-        <rosparam param="blue_team_names" subst_value="True">$(arg blue_team_names)</rosparam> 
-        <rosparam param="red_team_names" subst_value="True">$(arg red_team_names)</rosparam> 
-        <param name="threshold" value="1" />
     </node>
 
 </launch>

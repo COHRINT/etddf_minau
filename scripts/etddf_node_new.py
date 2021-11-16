@@ -7,18 +7,20 @@ ROS interface script for delta tiering filter
 
 Filter operates in ENU
 
+steps: get this to at least launch by itself
+verify it works in sim for static sonar (fast scan) & dynamic agent -> plot the error (associator, no sonar control)
+check the controller works statically - may need a correction here
+
 """
 
 import rospy
-import threading
-from minau.msg import ControlStatus
-from etddf_minau.msg import Measurement, MeasurementPackage, NetworkEstimate, AssetEstimate
+from etddf_minau.msg import MeasurementPackage, NetworkEstimate, AssetEstimate, Measurement
 from etddf_minau.srv import GetMeasurementPackage
 import numpy as np
 import tf
 np.set_printoptions(suppress=True)
 from copy import deepcopy
-from std_msgs.msg import Header, Float64, Int64
+from std_msgs.msg import Header
 from geometry_msgs.msg import PoseWithCovariance, Pose, Point, Quaternion, Twist, Vector3, TwistWithCovariance, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from minau.msg import SonarTargetList, SonarTarget
@@ -27,47 +29,51 @@ from deltatier.kf_filter import KalmanFilter
 
 class ETDDF_Node:
 
-    def __init__(self, 
-                my_name, \
-                topside_name, \
-                blue_names, \
-                blue_positions, \
-                red_agent_name,\
-                position_process_noise,\
-                velocity_process_noise,
-                is_deltatier,\
-                delta_multipliers=[], \
-                delta_codebook_table=[], \
-                buffer_size=0, \
-    ):
+    def __init__(self):
+        self.my_name = rospy.get_param("~my_name")
+        self.cuprint = CUPrint("{}/etddf".format(self.my_name))
+        self.blue_agent_names = rospy.get_param("~blue_team_names")
+        blue_positions = rospy.get_param("~blue_team_positions")
 
-        self.my_name = my_name
-        self.topside_name = topside_name
-        self.blue_agent_names = blue_names
-        assert topside_name not in self.blue_agent_names
-        self.blue_agent_ids = list( range(len(self.blue_agent_names)) )
+        self.topside_name = rospy.get_param("~topside_name")
+        assert self.topside_name not in self.blue_agent_names
+
+        red_agent_name = rospy.get_param("~red_team_name")
+        
         self.red_agent_exists = red_agent_name != ""
         if self.red_agent_exists:
             self.red_agent_name = red_agent_name
             self.red_agent_id = len(self.blue_agent_names)
 
-        self.position_process_noise = position_process_noise
-        self.velocity_process_noise = velocity_process_noise
+        self.use_strapdown = rospy.get_param("~use_strapdown")
+        self.position_process_noise = rospy.get_param("~position_process_noise")
+        self.velocity_process_noise = rospy.get_param("~velocity_process_noise")
+        self.fast_ci = rospy.get_param("~fast_ci")
+        self.force_modem_pose = rospy.get_param("~force_modem_pose")
+        self.meas_variances = {}
+        self.meas_variances["sonar_range"] = rospy.get_param("~force_sonar_range_var")
+        self.meas_variances["sonar_az"] = rospy.get_param("~force_sonar_az_var")
+        self.meas_variances["modem_range"] = rospy.get_param("~force_modem_range_var")
+        self.meas_variances["modem_az"] = rospy.get_param("~force_modem_az_var")
+
+        known_position_uncertainty = rospy.get_param("~known_position_uncertainty")
+        unknown_position_uncertainty = rospy.get_param("~unknown_position_uncertainty")
         
-        self.is_deltatier = is_deltatier
-        # Initialize Buffer Service
+        self.is_deltatier = rospy.get_param("~is_deltatier")
+        if self.is_deltatier:
+            self.delta_multipliers = rospy.get_param("~delta_tiers")
+            self.delta_codebook_table = {"sonar_range" : rospy.get_param("~sonar_range_start_et_delta"),
+                                         "sonar_azimuth" : rospy.get_param("~sonar_az_start_et_delta")}
+            self.buffer_size = rospy.get_param("~buffer_space")
+
         if self.is_deltatier:
             rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
 
-        self.kf = KalmanFilter(blue_positions, [], self.red_agent_exists, self.is_deltatier)
-
-        if self.is_deltatier:
-            self.delta_multipliers = delta_multipliers
-            self.delta_codebook_table = delta_codebook_table
-            self.buffer_size = buffer_size
+        self.kf = KalmanFilter(blue_positions, [], self.red_agent_exists, self.is_deltatier, \
+            known_posititon_unc=known_position_uncertainty,\
+            unknown_agent_unc=unknown_position_uncertainty)
 
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
-
         self.asset_pub_dict = {}
         for asset in self.blue_agent_names:
             self.asset_pub_dict[asset] = rospy.Publisher("etddf/estimate/" + asset, Odometry, queue_size=10)
@@ -79,235 +85,204 @@ class ETDDF_Node:
         # Modem & Measurement Packages
         rospy.Subscriber("etddf/packages_in", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
 
-        if rospy.get_param("~strapdown_topic") != "None":
-            self.cuprint("Intersecting with strapdown")
-            rospy.Subscriber( rospy.get_param("~strapdown_topic"), Odometry, self.nav_filter_callback, queue_size=1)
-            # Set up publisher for correcting the odom estimate
-            self.intersection_pub = rospy.Publisher("set_pose", PoseWithCovarianceStamped, queue_size=1)
-            rospy.wait_for_message( rospy.get_param("~strapdown_topic"), Odometry)
-        else:
-            self.cuprint("Not intersecting with strapdown filter")
-            rospy.Timer(rospy.Duration(1 / self.update_rate), self.no_nav_filter_callback)
-        
+        # Strapdown configuration
+        self.update_seq = 0
+        self.strapdown_correction_period = rospy.get_param("~strapdown_correction_period")
+        strap_topic = "odometry/filtered/odom"
+        rospy.Subscriber( strap_topic, Odometry, self.nav_filter_callback, queue_size=1)
+        self.intersection_pub = rospy.Publisher("set_pose", PoseWithCovarianceStamped, queue_size=1)
+        self.cuprint("Waiting for strapdown")
+        # rospy.wait_for_message( strap_topic, Odometry)
+        self.cuprint("Strapdown found")
+
         # Sonar Subscription
         rospy.Subscriber("sonar_processing/target_list/associated", SonarTargetList, self.sonar_callback)
+        self.cuprint("Loaded")
 
     def sonar_callback(self, msg):
         self.cuprint("Receiving sonar meas")
-        collecting_agent_id = self.blue_agent_ids.index(self.my_name)
+        collecting_agent_id = self.blue_agent_names.index(self.my_name)
         for st in msg.targets:
-            collected_agent_id = self.blue_agent_ids.index( st.id )
+            collected_agent_id = self.blue_agent_names.index( st.id )
             range_meas = st.range_m
-            azimuth_meas = st.bearing_rad
-            R_range = st.range_variance
-            R_az = st.bearing_variance
+            azimuth_meas = st.bearing_rad + self.last_orientation_rad
+            if self.meas_variances["sonar_range"] == -1:
+                R_range = st.range_variance
+            else:
+                R_range = self.meas_variances["sonar_range"]
+            if self.meas_variances["sonar_az"] == -1:
+                R_az = st.bearing_variance
+            else:
+                R_az = self.meas_variances["sonar_az"]
 
+            self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
             self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
-            self.kf.filter_range_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
-
-    def all_assets_same_plane(self):
-        now = rospy.get_rostime()
-        for a in self.asset2id:
-            if a != self.my_name:                
-                sonar_z = Measurement("sonar_z", now, self.my_name, a, 0, self.default_meas_variance["sonar_z"], [], -1.0)
-                self.filter.add_meas(sonar_z)
-
-
-    def no_nav_filter_callback(self, event):
-        t_now = rospy.get_rostime()
-        delta_t_ros =  t_now - self.last_update_time
-        self.update_lock.acquire()
-
-        u = np.zeros((3,1))
-        Q = self.Q
-        self.all_assets_same_plane()
-        self.filter.update(t_now, u, Q, None, None)
-        
-        self.publish_estimates(t_now)
-        self.last_update_time = t_now
-        self.update_seq += 1
-        self.update_lock.release()
 
     def nav_filter_callback(self, odom):
         # Update at specified rate
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
-        if delta_t_ros < rospy.Duration(1/self.update_rate):
+        if delta_t_ros < rospy.Duration(1):
             return
 
+        self.kf.propogate(self.position_process_noise, self.velocity_process_noise)
+
         # Update orientation
-        self.last_orientation = odom.pose.pose.orientation
-        self.last_orientation_cov = np.array(odom.pose.covariance).reshape(6,6)
-        self.last_orientation_dot = odom.twist.twist.angular
-        self.last_orientation_dot_cov = np.array(odom.twist.covariance).reshape(6,6)
+        last_orientation_quat = odom.pose.pose.orientation
+        (r, p, y) = tf.transformations.euler_from_quaternion([last_orientation_quat.x, \
+                last_orientation_quat.y, last_orientation_quat.z, last_orientation_quat.w])
+        self.last_orientation_rad = y
+        orientation_cov = np.array(odom.pose.covariance).reshape(6,6)
 
-        self.update_lock.acquire()
+        if self.use_strapdown:
+            # last_orientation_dot = odom.twist.twist.angular
+            # last_orientation_dot_cov = np.array(odom.twist.covariance).reshape(6,6)
 
-        u = np.zeros((3,1))
-        Q = self.Q
+            # Turn odom estimate into numpy
+            # Note the velocities are in the base_link frame --> Transform to odom frame # Assume zero pitch/roll
+            v_baselink = np.array([[odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
+            rot_mat = np.array([ # base_link to odom frame
+                [np.cos(y), -np.sin(y), 0],
+                [np.sin(y), np.cos(y),  0],
+                [0,         0,          1]
+                ])
+            v_odom = rot_mat.dot( v_baselink )
 
-        # Add Bruce's position
-        # gps_x = Measurement("gps_x", t_now, "bluerov2_7", "", 0.0, self.default_meas_variance["gps_x"], [], -1.0)
-        # gps_y = Measurement("gps_y", t_now, "bluerov2_7", "", -1.0, self.default_meas_variance["gps_y"], [], -1.0)
-        # gps_z = Measurement("depth", t_now, "bluerov2_7", "", -0.5, self.default_meas_variance["gps_x"], [], -1.0)
-        # self.filter.add_meas(gps_x)
-        # self.filter.add_meas(gps_y)
-        # self.filter.add_meas(gps_z)
+            mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
+                            v_odom[0,0], v_odom[1,0], v_odom[2,0]]]).T
+            cov_pose = np.array(odom.pose.covariance).reshape(6,6)
+            cov_twist = np.array(odom.twist.covariance).reshape(6,6)
+            cov = np.zeros((6,6))
+            cov[:3,:3] = cov_pose[:3,:3] #+ np.eye(3) * 4 #sim
+            cov[3:,3:] = rot_mat.dot( cov_twist[:3,:3] ).dot( rot_mat.T ) #+ np.eye(3) * 0.03 #sim
 
-        # Turn odom estimate into numpy
-        # Note the velocities are in the base_link frame --> Transform to odom frame # Assume zero pitch/roll
-        v_baselink = np.array([[odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.linear.z]]).T
-        (r, p, y) = tf.transformations.euler_from_quaternion([self.last_orientation.x, \
-                self.last_orientation.y, self.last_orientation.z, self.last_orientation.w])
-        rot_mat = np.array([ # base_link to odom frame
-            [np.cos(y), -np.sin(y), 0],
-            [np.sin(y), np.cos(y),  0],
-            [0,         0,          1]
-            ])
-        v_odom = rot_mat.dot( v_baselink )
+            my_id = self.blue_agent_names.index(self.my_name)
+            x_nav, P_nav = self.kf.intersect_strapdown(mean, cov, my_id, fast_ci=False)
 
-        mean = np.array([[odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z, \
-                        v_odom[0,0], v_odom[1,0], v_odom[2,0]]]).T
-        cov_pose = np.array(odom.pose.covariance).reshape(6,6)
-        cov_twist = np.array(odom.twist.covariance).reshape(6,6)
-        cov = np.zeros((6,6))
-        cov[:3,:3] = cov_pose[:3,:3] #+ np.eye(3) * 4 #sim
-        cov[3:,3:] = rot_mat.dot( cov_twist[:3,:3] ).dot( rot_mat.T ) #+ np.eye(3) * 0.03 #sim
+            if self.correct_strapdown and (self.update_seq % self.strapdown_correction_period == 0):
+                if x_nav is not None and P_nav is not None:
+                    self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
 
-        self.all_assets_same_plane()
-        c_bar, Pcc = self.filter.update(t_now, u, Q, mean, cov)
-
-        if c_bar is not None and Pcc is not None and self.update_seq % 10 == 0:
-            # Correct the odom estimate
-            msg = PoseWithCovarianceStamped()
-            msg.header = odom.header
-            msg.header.frame_id = "odom"
-
-            # Transform
-            # mean -= transform
-            msg.pose.pose.position.x = c_bar[0,0]
-            msg.pose.pose.position.y = c_bar[1,0]
-            msg.pose.pose.position.z = c_bar[2,0]
-            msg.pose.pose.orientation = self.last_orientation
-            new_cov = np.zeros((6,6))
-            new_cov[:3,:3] = Pcc[:3,:3] # TODO add full cross correlations
-            new_cov[3:,3:] = self.last_orientation_cov[3:,3:]
-
-            msg.pose.covariance = list(new_cov.flatten())
-            self.intersection_pub.publish( msg )
-
-        self.publish_estimates(t_now)
+        self.publish_estimates(t_now, last_orientation_quat, orientation_cov)
         self.last_update_time = t_now
         self.update_seq += 1
-        self.update_lock.release()
-    
-    def control_status_callback(self, msg):
-        self.update_lock.acquire()
-        if msg.is_setpoint_active and msg.is_heading_velocity_setpoint_active:
-            self.control_input = np.array([[msg.setpoint_velocity.y, msg.setpoint_velocity.z, -msg.setpoint_velocity.z]]).T
-        else:
-            self.control_input = None
-        # GRAB CONTROL INPUT
-        self.update_lock.release()
 
-    def depth_callback(self, msg):
-        self.meas_lock.acquire()
-        self.last_depth_meas = msg.data
-        self.meas_lock.release()
+    def correct_strapdown(self, header, x_nav, P_nav, orientation, orientation_cov):
+        msg = PoseWithCovarianceStamped()
+        msg.header = header
+        msg.header.frame_id = "odom"
 
-    def publish_estimates(self, timestamp):
+        # Transform
+        msg.pose.pose.position.x = x_nav[0,0]
+        msg.pose.pose.position.y = x_nav[1,0]
+        msg.pose.pose.position.z = x_nav[2,0]
+        msg.pose.pose.orientation = orientation
+        new_cov = np.zeros((6,6))
+        new_cov[:3,:3] = P_nav[:3,:3] # TODO add full cross correlations
+        new_cov[3:,3:] = orientation_cov[3:,3:]
+
+        msg.pose.covariance = list(new_cov.flatten())
+        self.intersection_pub.publish( msg )
+
+    def publish_estimates(self, timestamp, last_orientation_quat, orientation_cov):
         ne = NetworkEstimate()
-        for asset in self.asset2id.keys():
-            if TOPSIDE_NAME in asset:
-                continue
-            if "red" in asset and not self.red_asset_found:
-                continue
-            # else:
-            #     print("publishing " + asset + "'s estimate")
-
-            # Construct Odometry Msg for Asset
-
-            mean, cov = self.filter.get_asset_estimate(asset)
+        for asset in self.blue_agent_names:
+            
+            ind = self.blue_agent_names.index(asset)
+            x_hat_agent, P_agent = self.kf.get_agent_states(ind)
             pose_cov = np.zeros((6,6))
-            pose_cov[:3,:3] = cov[:3,:3]
+            pose_cov[:3,:3] = P_agent[:3,:3]
             if asset == self.my_name:
-                pose = Pose(Point(mean[0],mean[1],mean[2]), \
-                            self.last_orientation)
-                pose_cov[3:,3:] = self.last_orientation_cov[3:,3:]
+                pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]),last_orientation_quat)
+                pose_cov[3:,3:] = orientation_cov[3:,3:]
             else:
-                pose = Pose(Point(mean[0],mean[1],mean[2]), \
-                            Quaternion(0,0,0,1))
-                pose_cov[3:,3:] = np.eye(3) * 3
+                pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
+                pose_cov[3:,3:] = -np.eye(3)
             pwc = PoseWithCovariance(pose, list(pose_cov.flatten()))
 
-            twist_cov = np.zeros((6,6))
-            twist_cov[:3,:3] = cov[3:6,3:6]
-            if asset == self.my_name:
-                tw = Twist(Vector3(mean[3],mean[4],mean[5]), self.last_orientation_dot)
-                twist_cov[3:, 3:] = self.last_orientation_dot_cov[3:,3:]
-            else:
-                tw = Twist(Vector3(mean[3],mean[4],mean[5]), Vector3(0,0,0))
-                twist_cov[3:, 3:] = np.eye(3) * -1
+            twist_cov = -np.eye(6)
+            twist_cov[:3,:3] = P_agent[3:6,3:6]
+            tw = Twist()
+            tw.linear = Vector3(x_hat_agent[3],x_hat_agent[4],x_hat_agent[5])
             twc = TwistWithCovariance(tw, list(twist_cov.flatten()))
-            h = Header(self.update_seq, timestamp, "map")
-            o = Odometry(h, "map", pwc, twc)
+            
+            h = Header(self.update_seq, timestamp, "odom")
+            o = Odometry(h, "odom", pwc, twc)
 
+            ae = AssetEstimate(o, asset)
+            ne.assets.append(ae)
+            self.asset_pub_dict[asset].publish(o)
+        
+        if self.red_agent_exists:
+            asset = self.red_agent_name
+            ind = self.blue_agent_names.index(asset)
+            x_hat_agent, P_agent = self.kf.get_agent_states(ind)
+            pose_cov = np.zeros((6,6))
+            pose_cov[:3,:3] = P_agent[:3,:3]
+            pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
+            pose_cov[3:,3:] = -np.eye(3)
+            pwc = PoseWithCovariance(pose, list(pose_cov.flatten()))
+            twist_cov = -np.eye((6,6))
+            twist_cov[:3,:3] = P_agent[3:6,3:6]
+            tw = Twist()
+            tw.linear = Vector3(x_hat_agent[3],x_hat_agent[4],x_hat_agent[5])
+            twc = TwistWithCovariance(tw, list(twist_cov.flatten()))
+            h = Header(self.update_seq, timestamp, "odom")
+            o = Odometry(h, "odom", pwc, twc)
             ae = AssetEstimate(o, asset)
             ne.assets.append(ae)
             self.asset_pub_dict[asset].publish(o)
 
         self.network_pub.publish(ne)
 
-        # Publish transform
-        # self.br.sendTransform(
-        #     self.odom2map_tf,
-        #     (0,0,0,1),
-        #     timestamp,
-        #     "map",
-        #     "odom")
-
     def meas_pkg_callback(self, msg):
-        self.update_lock.acquire()
         # Modem Meas taken by topside
-        
-        if msg.src_asset == TOPSIDE_NAME:
+        if msg.src_asset == self.topside_name:
             self.cuprint("Receiving Surface Modem Measurements")
-            modem_indices = []
+
+            # Approximate all modem measurements as being taken at this time
             for meas in msg.measurements:
+                if len(self.force_modem_pose) == 0:
+                    modem_loc = meas.global_pose[:3]
+                    modem_ori = meas.global_pose[3]
+                else:
+                    modem_loc = self.force_modem_pose[:3]
+                    modem_ori = self.force_modem_pose[3]
+                
                 # Approximate the fuse on the next update, so we can get other asset's position immediately
                 if meas.meas_type == "modem_elevation":
+
                     rospy.logerr("Ignoring Modem Elevation Measurement since we have depth measurements")
                     continue
-                elif meas.meas_type == "modem_azimuth":
-                    # meas.global_pose = list(meas.global_pose)
-                    meas.global_pose = [0,0,0,0]
-                    # self.cuprint("azimuth: " + str(meas.data))
-                    meas.data = (meas.data * np.pi) / 180
-                    meas.variance = self.default_meas_variance["modem_azimuth"]
-                elif meas.meas_type == "modem_range":
-                    # meas.global_pose = list(meas.global_pose)
-                    meas.global_pose = [0,0,0,0]
-                    # self.cuprint("range: " + str(meas.data))
-                    meas.variance = self.default_meas_variance["modem_range"]
-                ind = self.filter.add_meas(meas, common=True)
-                modem_indices.append(ind)
-            self.filter.catch_up(min(modem_indices))
 
-        # Buffer
-        else:
-            self.cuprint("receiving buffer")
-            # Loop through buffer and see if we've found the red agent
-            for i in range(len(msg.measurements)):
-                if msg.measurements[i].measured_asset in self.red_asset_names and not self.red_asset_found:
-                    self.red_asset_found = True
-                    self.cuprint("Red asset measurement received!")
+                elif meas.meas_type == "modem_azimuth":
+
+                    meas.data += modem_ori
+                    meas_value_rad = np.radians(meas.data)
+                    agent = meas.measured_asset
+                    agent_id = self.blue_agent_names.index(agent)
+                    R = self.meas_variances["modem_az"]
+                    self.kf.filter_azimuth_from_untracked( meas_value_rad, R, modem_loc, agent_id, index=None)
+
+                elif meas.meas_type == "modem_range":
+
+                    agent = meas.measured_asset
+                    agent_id = self.blue_agent_names.index(agent)
+                    R = self.meas_variances["modem_range"]
+                    self.kf.filter_azimuth_from_untracked( meas.data, R, modem_loc, agent_id, index=None)
+
+        elif self.is_deltatier:
+            raise NotImplementedError("DT is not supported yet")
+            # self.cuprint("receiving buffer")
+            # # Loop through buffer and see if we've found the red agent
+            # for i in range(len(msg.measurements)):
+            #     if msg.measurements[i].measured_asset in self.red_asset_names and not self.red_asset_found:
+            #         self.red_asset_found = True
+            #         self.cuprint("Red asset measurement received!")
             
-            implicit_cnt, explicit_cnt = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
+            # implicit_cnt, explicit_cnt = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
             
             # implicit_cnt, explicit_cnt = self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q, msg.all_measurements)
-
-        self.update_lock.release()
-        self.cuprint("Finished")
 
     def get_meas_pkg_callback(self, req):
         self.cuprint("pulling buffer")
@@ -318,196 +293,39 @@ class ETDDF_Node:
         self.cuprint("returning buffer")
         return mp
 
-################################
-### Initialization Functions ###
-################################
-
-def get_indices_from_asset_names(blue_team):
-    my_name = rospy.get_param("~my_name")
-    red_team = rospy.get_param("~red_team_names")
-    asset2id = {}
-    asset2id[my_name] = 0
-
-    next_index = 1
-    for asset in blue_team:
-        if asset == my_name:
-            continue
-        else:
-            asset2id[asset] = next_index
-            next_index += 1
-    for asset in red_team:
-        asset2id[asset] = next_index
-        next_index += 1
-
-    if my_name != TOPSIDE_NAME:
-        asset2id[TOPSIDE_NAME] = -1 # arbitrary negative number
-
-    return asset2id
-
-def get_delta_codebook_table():
-    delta_codebook = {}
-
-    meas_info = rospy.get_param("~measurements")
-    for meas in meas_info.keys():
-        base_et_delta = meas_info[meas]["base_et_delta"]
-        delta_codebook[meas] = base_et_delta
-    return delta_codebook
-
-def get_meas_space_table():
-    meas_space_table = {}
-
-    meas_info = rospy.get_param("~measurements")
-    for meas in meas_info.keys():
-        meas_space_table[meas] = meas_info[meas]["buffer_size"]
-
-    meas_space_table["burst"] = rospy.get_param("~buffer_space/burst")
-
-    return meas_space_table
-
-def _dict2arr(d):
-    return np.array([[d["x"]],\
-                    [d["y"]],\
-                    [d["z"]],\
-                    [d["x_vel"]], \
-                    [d["y_vel"]],\
-                    [d["z_vel"]]])
-def _list2arr(l):
-    return np.array([l]).reshape(-1,1)
-
-def _add_velocity_states(base_states):
-    velocities = np.zeros((base_states.size,1))
-    return np.concatenate((base_states, velocities), axis=0)
-
-def get_initial_estimate(num_states, blue_team_names, blue_team_positions):
-    default_starting_position = _dict2arr(rospy.get_param("~default_starting_position"))
-    uncertainty_known_starting_position = _dict2arr( rospy.get_param("~initial_uncertainty/known_starting_position"))
-    uncertainty_unknown_starting_position = _dict2arr( rospy.get_param("~initial_uncertainty/unknown_starting_position"))
-
-    my_starting_position = rospy.get_param("~starting_position")
-    if not my_starting_position:
-        my_starting_position = deepcopy(default_starting_position)
-    else:
-        my_starting_position = _add_velocity_states( _list2arr(my_starting_position))
-    ownship_uncertainty = _dict2arr( rospy.get_param("~initial_uncertainty/ownship") )
-
-    uncertainty = np.zeros((num_states,num_states))
-    uncertainty_vector = np.zeros((num_states,1))
-    uncertainty_vector[:NUM_OWNSHIP_STATES] = ownship_uncertainty
-    uncertainty += np.eye(num_states) * uncertainty_vector
-
-    state_vector = my_starting_position
-    my_name = rospy.get_param("~my_name")
-    red_team_names = rospy.get_param("~red_team_names")
-
-    next_index_unc = 1
-    next_index_pos = 1
-    for asset in blue_team_names:
-        if asset == my_name:
-            next_index_pos += 1
-            continue
-        if len(blue_team_positions) >= next_index_pos: # we were given the positione of this asset in roslaunch
-            next_position = _add_velocity_states( _list2arr( blue_team_positions[next_index_pos-1]))
-            uncertainty_vector = np.zeros((num_states,1))
-            uncertainty_vector[next_index_unc*NUM_OWNSHIP_STATES:(next_index_unc+1)*NUM_OWNSHIP_STATES] = uncertainty_known_starting_position
-            uncertainty += np.eye(num_states) * uncertainty_vector
-        else:
-            next_position = deepcopy(default_starting_position)
-            uncertainty_vector = np.zeros((num_states,1))
-            uncertainty_vector[next_index_unc*NUM_OWNSHIP_STATES:(next_index_unc+1)*NUM_OWNSHIP_STATES] = uncertainty_unknown_starting_position
-            uncertainty += np.eye(num_states) * uncertainty_vector
-
-        state_vector = np.concatenate((state_vector, next_position),axis=0)
-        next_index_unc += 1
-        next_index_pos += 1
-    for asset in red_team_names:
-        next_position = deepcopy(default_starting_position)
-        state_vector = np.concatenate((state_vector, next_position),axis=0)
-
-        uncertainty_vector = np.zeros((num_states,1))
-        uncertainty_vector[next_index_unc*NUM_OWNSHIP_STATES:(next_index_unc+1)*NUM_OWNSHIP_STATES] = uncertainty_unknown_starting_position
-        uncertainty += np.eye(num_states) * uncertainty_vector
-
-        next_index_unc += 1
-    
-    return state_vector, uncertainty
-
-def get_process_noise(num_states, blue_team_names):
-    Q = np.zeros((num_states, num_states))
-    ownship_Q = _dict2arr(rospy.get_param("~process_noise/ownship"))
-    blueteam_Q = _dict2arr(rospy.get_param("~process_noise/blueteam"))
-    redteam_Q = _dict2arr(rospy.get_param("~process_noise/redteam"))
-
-    Q_vec = np.zeros((num_states,1))
-    Q_vec[:NUM_OWNSHIP_STATES] = ownship_Q
-    Q += np.eye(num_states) * Q_vec
-
-    my_name = rospy.get_param("~my_name")
-    red_team_names = rospy.get_param("~red_team_names")
-
-    next_index = 1
-    for asset in blue_team_names:
-        if asset == my_name:
-            continue
-        Q_vec = np.zeros((num_states,1))
-        Q_vec[next_index*NUM_OWNSHIP_STATES:(next_index+1)*NUM_OWNSHIP_STATES] = blueteam_Q
-        Q += np.eye(num_states) * Q_vec
-        next_index += 1
-    for asset in red_team_names:
-        Q_vec = np.zeros((num_states,1))
-        Q_vec[next_index*NUM_OWNSHIP_STATES:(next_index+1)*NUM_OWNSHIP_STATES] = redteam_Q
-        Q += np.eye(num_states) * Q_vec
-        next_index += 1
-    return Q
-
-def get_default_meas_variance():
-    meas_vars = {}
-    meas_info = rospy.get_param("~measurements")
-    for meas in meas_info.keys():
-        sd = meas_info[meas]["default_sd"]
-        meas_vars[meas] = sd ** 2
-    return meas_vars
-
 if __name__ == "__main__":
     rospy.init_node("etddf_node")
-    my_name = rospy.get_param("~my_name")
-    update_rate = rospy.get_param("~update_rate")
-    delta_tiers = rospy.get_param("~delta_tiers")
-    blue_team_names = rospy.get_param("~blue_team_names")
-    blue_team_positions = rospy.get_param("~blue_team_positions")
+    et_node = ETDDF_Node()
 
-    # Don't track topside if it isn't this agent
-    if my_name != TOPSIDE_NAME and TOPSIDE_NAME in blue_team_names:
-        ind = blue_team_names.index(TOPSIDE_NAME)
-        if ind >= 0:
-            blue_team_names.pop(ind)
-            blue_team_positions.pop(ind)
-
-
-    asset2id = get_indices_from_asset_names(blue_team_names)
-    delta_codebook_table = get_delta_codebook_table()
-    buffer_size = rospy.get_param("~buffer_space/capacity")
-    meas_space_table = get_meas_space_table()
-    if my_name != TOPSIDE_NAME:
-        num_assets = len(asset2id) - 1 # subtract topside
+    debug = True
+    if not debug:
+        rospy.spin()
     else:
-        num_assets = len(asset2id)
-    x0, P0 = get_initial_estimate(num_assets * NUM_OWNSHIP_STATES, blue_team_names, blue_team_positions)
-    Q = get_process_noise(num_assets * NUM_OWNSHIP_STATES, blue_team_names)
-    # rospy.logwarn("{}, {}, {}, {}".format(my_name, x0.shape, P0.shape, Q.shape))
-    default_meas_variance = get_default_meas_variance()
-    use_control_input = rospy.get_param("~use_control_input")
+        o = Odometry()
+        o.pose.pose.orientation.w = 1
+        et_node.use_strapdown = False
+        rospy.sleep(2)
+        t = rospy.get_rostime()
+        et_node.nav_filter_callback(o)
 
-    et_node = ETDDF_Node(my_name,
-                        update_rate, \
-                        delta_tiers, \
-                        asset2id, \
-                        delta_codebook_table, \
-                        buffer_size, \
-                        meas_space_table, \
-                        x0,\
-                        P0,\
-                        Q,\
-                        default_meas_variance,\
-                        use_control_input)
+        mp = MeasurementPackage()
+        m = Measurement("modem_range", t, "topside", "guppy", 6, 0, [], 0)
+        mp.measurements.append(m)
+        m = Measurement("modem_azimuth", t, "topside", "guppy", 45, 0, [],0)
+        mp.measurements.append(m)
+        mp.src_asset = "topside"
+        et_node.meas_pkg_callback(mp)
 
-    rospy.spin()
+        rospy.sleep(1)
+        et_node.kf._filter_artificial_depth(0.0)
+        et_node.nav_filter_callback(o)
+
+        stl = SonarTargetList()
+        st = SonarTarget()
+        st.id = "guppy"
+        st.bearing_rad = np.random.normal(0,0.01)
+        st.range_m = 5.0 + np.random.normal(0,0.1)
+        stl.targets.append(st)
+        et_node.sonar_callback(stl)
+        rospy.sleep(1)
+        et_node.nav_filter_callback(o)

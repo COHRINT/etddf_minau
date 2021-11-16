@@ -73,7 +73,7 @@ class SonarAssociator:
 
         # Get my pose
         self.my_name = rospy.get_namespace()[:-1].strip("/")
-        pose_topic = "etddf/estimate" + rospy.get_namespace()[:-1]
+        pose_topic = "odometry/filtered/odom"
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
         # rospy.wait_for_message(pose_topic, Odometry) # TODO add back in
@@ -155,8 +155,11 @@ class SonarAssociator:
         new_msg = deepcopy(msg)
         new_msg.targets = []
         for st in msg.targets:
-            meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad)
-            meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad)
+
+            st.bearing_rad += self.orientation_rad # convert the orientation to odom frame
+
+            meas_x = st.range_m * np.cos(st.bearing_rad)
+            meas_y = st.range_m * np.sin(st.bearing_rad)
             meas = np.array([[meas_x], [meas_y]])
 
             bearing_std = np.sqrt( self.bearing_var )
