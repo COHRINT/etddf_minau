@@ -508,16 +508,19 @@ class KalmanFilter:
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
                 # Go 8 -> 6
-                rot_mat_nav = np.array([
-                    [1, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 1, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 1, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 1, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 1, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 1, 0]]
-                )
-                nav_est_x = np.dot( rot_mat_nav, x_nav)
-                nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                # rot_mat_nav = np.array([
+                #     [1, 0, 0, 0, 0, 0, 0, 0],
+                #     [0, 1, 0, 0, 0, 0, 0, 0],
+                #     [0, 0, 1, 0, 0, 0, 0, 0],
+                #     [0, 0, 0, 0, 1, 0, 0, 0],
+                #     [0, 0, 0, 0, 0, 1, 0, 0],
+                #     [0, 0, 0, 0, 0, 0, 1, 0]]
+                # )
+                # nav_est_x = np.dot( rot_mat_nav, x_nav)
+                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+
+                nav_est_x = x_nav
+                nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
@@ -588,16 +591,18 @@ class KalmanFilter:
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
                 # Go 8 -> 6
-                rot_mat_nav = np.array([
-                    [1, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 1, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 1, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 1, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 1, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 1, 0]]
-                )
-                nav_est_x = np.dot( rot_mat_nav, x_nav)
-                nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                # rot_mat_nav = np.array([
+                #     [1, 0, 0, 0, 0, 0, 0, 0],
+                #     [0, 1, 0, 0, 0, 0, 0, 0],
+                #     [0, 0, 1, 0, 0, 0, 0, 0],
+                #     [0, 0, 0, 0, 1, 0, 0, 0],
+                #     [0, 0, 0, 0, 0, 1, 0, 0],
+                #     [0, 0, 0, 0, 0, 0, 1, 0]]
+                # )
+                # nav_est_x = np.dot( rot_mat_nav, x_nav)
+                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                nav_est_x = x_nav
+                nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
@@ -633,16 +638,18 @@ class KalmanFilter:
             self.P_nav_history_prior.append(deepcopy(P_nav))
 
         # Go 8 -> 6
-        rot_mat_nav = np.array([
-            [1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0]]
-        )
-        nav_est_x = np.dot( rot_mat_nav, x_nav)
-        nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+        # rot_mat_nav = np.array([
+        #     [1, 0, 0, 0, 0, 0, 0, 0],
+        #     [0, 1, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 1, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 1, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 1, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 1, 0]]
+        # )
+        # nav_est_x = np.dot( rot_mat_nav, x_nav)
+        # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+        nav_est_x = x_nav
+        nav_est_P = P_nav
 
         x_hat_agent, P_agent = self.get_agent_states(agent)
 
