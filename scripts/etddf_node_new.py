@@ -253,6 +253,7 @@ class ETDDF_Node:
                 else:
                     modem_loc = self.force_modem_pose[:3]
                     modem_ori = self.force_modem_pose[3]
+                self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
                 
                 # Approximate the fuse on the next update, so we can get other asset's position immediately
                 if meas.meas_type == "modem_elevation":
