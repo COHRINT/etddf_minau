@@ -46,6 +46,7 @@ class ETDDF_Node:
             self.red_agent_id = len(self.blue_agent_names)
 
         self.use_strapdown = rospy.get_param("~use_strapdown")
+        self.do_correct_strapdown = rospy.get_param("~correct_strapdown")
         self.position_process_noise = rospy.get_param("~position_process_noise")
         self.velocity_process_noise = rospy.get_param("~velocity_process_noise")
         self.fast_ci = rospy.get_param("~fast_ci")
@@ -163,7 +164,7 @@ class ETDDF_Node:
             my_id = self.blue_agent_names.index(self.my_name)
             x_nav, P_nav = self.kf.intersect_strapdown(mean, cov, my_id, fast_ci=False)
 
-            if self.correct_strapdown and (self.update_seq % self.strapdown_correction_period == 0):
+            if self.do_correct_strapdown and (self.update_seq % self.strapdown_correction_period == 0):
                 if x_nav is not None and P_nav is not None:
                     self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
 
