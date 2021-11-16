@@ -131,7 +131,7 @@ class Associator:
             return "proto"
         else:
             print("Can't associate detection with tracked agents and no search agents.")
-            return "none", False
+            return "none"
 
     def clean_protos(self, t):
         if self.last_time == None:

@@ -7,7 +7,7 @@ def scan_agent(mean, my_pos, scan_size):
     x_delta = delta[0]
     y_delta = delta[1]
     world_angle = np.arctan2(y_delta, x_delta)
-    return normalize_angle( world_angle - scan_size / 2.0 )
+    return normalize_angle( world_angle + scan_size / 2.0 )
 
 def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thresh, lost_thresh):
     """
@@ -36,7 +36,7 @@ def scan_control(scan_angle, my_pos, agent_dict, prototrack, scan_size, ping_thr
             return scan_agent(mean, my_pos, scan_size), False
         else:
             print("Agent lost: scanning")
-            return normalize_angle( scan_angle - scan_size ), True # Subtract b/c ping360 scans down
+            return normalize_angle( scan_angle + scan_size ), True
     else:
         # ping agent with highest uncertainty
         agents, unc = [], []
