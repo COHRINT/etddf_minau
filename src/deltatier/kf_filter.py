@@ -628,8 +628,9 @@ class KalmanFilter:
         if share_depth:
             self._filter_artificial_depth(x_nav[2])
 
-        self.x_nav_history_prior.append(deepcopy(x_nav))
-        self.P_nav_history_prior.append(deepcopy(P_nav))
+        if self.is_deltatier:
+            self.x_nav_history_prior.append(deepcopy(x_nav))
+            self.P_nav_history_prior.append(deepcopy(P_nav))
 
         # Go 8 -> 6
         rot_mat_nav = np.array([
