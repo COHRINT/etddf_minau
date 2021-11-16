@@ -651,7 +651,7 @@ class KalmanFilter:
         nav_est_x = x_nav
         nav_est_P = P_nav
 
-        x_hat_agent, P_agent = self.get_agent_states(agent)
+        x_hat_agent, P_agent, rot_mat = self.get_agent_states(agent)
 
         if fast_ci:
             mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
@@ -692,7 +692,7 @@ class KalmanFilter:
         x_hat_agent = np.dot( rot_mat, self.x_hat)
         P_agent = np.dot( np.dot( rot_mat, self.P), rot_mat.T)
 
-        return x_hat_agent, P_agent
+        return x_hat_agent, P_agent, rot_mat
 
     """ 
     ################################################################################################# 
