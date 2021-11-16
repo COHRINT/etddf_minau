@@ -31,7 +31,7 @@ Scenario
 3 provide upper and lower bounds
 4 I should check if anything changed and only update then? 
 
-Whenever we get a detection:
+# TODO try first deltatier simple with stack
 
 """
 
@@ -46,12 +46,12 @@ class SonarAssociator:
         time_to_drop = rospy.get_param("~time_to_drop")
         self.lost_agent_unc = rospy.get_param("~lost_agent_unc")
         proto_track_points = rospy.get_param("~proto_track_points")
-        process_noise = rospy.get_param("~process_noise/blueteam/x")
+        process_noise = rospy.get_param("~position_process_noise")
         proto_Q = np.array([[process_noise, 0],[0, process_noise]])
         self.associator = Associator(time_to_drop, self.lost_agent_unc, proto_track_points, proto_Q)
 
-        self.bearing_var = rospy.get_param("~bearing_var")
-        self.range_var = rospy.get_param("~range_var")
+        self.bearing_var = rospy.get_param("~force_sonar_az_var")
+        self.range_var = rospy.get_param("~force_sonar_range_var")
 
         # Subscribe to all blue team poses
         blue_team = rospy.get_param("~blue_team_names")
@@ -62,6 +62,7 @@ class SonarAssociator:
             rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
 
         # Get my pose
+        self.my_name = rospy.get_namespace()[:-1].strip("/")
         pose_topic = "odometry/filtered/odom"
         rospy.Subscriber(pose_topic, Odometry, self.pose_callback)
         self.cuprint("Waiting for orientation")
@@ -73,7 +74,7 @@ class SonarAssociator:
         # o.pose.covariance = list( cov.flatten() )
         # o.pose.pose.orientation.w = 1
         # self.pose_callback(o)
-        self.cuprint("Orientation found")
+        # self.cuprint("Orientation found")
 
         self.red_agent_name = rospy.get_param("~red_agent_name")
         if self.red_agent_name != "":
@@ -87,10 +88,10 @@ class SonarAssociator:
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
             self.ping_thresh = rospy.get_param("~ping_thresh")
             self.scan_angle = None
+            self.prototrack = None
             rospy.Subscriber("ping360_node/sonar/scan_complete", UInt16, self.scan_angle_callback)
             self.cuprint("Waiting for scan to complete")
             rospy.wait_for_message( "ping360_node/sonar/scan_complete", UInt16 )
-            self.prototrack = None
             self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
 
         sonar_topic = "sonar_processing/target_list"
@@ -170,9 +171,13 @@ class SonarAssociator:
         new_msg = deepcopy(msg)
         new_msg.targets = []
         for st in msg.targets:
-            meas_x = st.range_m * np.cos(st.bearing_rad + self.orientation_rad) + my_pos.x
-            meas_y = st.range_m * np.sin(st.bearing_rad + self.orientation_rad) + my_pos.y
+            inertial_bearing = st.bearing_rad + self.orientation_rad
+            self.cuprint("Associating r: {} az: {}".format(round(st.range_m,1), round(np.degrees(inertial_bearing),1)))
+
+            meas_x = st.range_m * np.cos(inertial_bearing)
+            meas_y = st.range_m * np.sin(inertial_bearing)
             meas = np.array([[meas_x], [meas_y]])
+            self.cuprint("World coords: {}".format(meas.flatten()))
 
             bearing_std = np.sqrt( self.bearing_var )
             unc_x = ( st.range_m * bearing_std ) ** 2
@@ -192,6 +197,8 @@ class SonarAssociator:
                 self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
+                st.bearing_variance = self.bearing_var
+                st.range_variance = self.range_var
                 new_msg.targets.append( st )
             
             self.scan_angle = st.bearing_rad

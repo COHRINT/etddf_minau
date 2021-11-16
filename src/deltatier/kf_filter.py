@@ -1,8 +1,7 @@
 from copy import deepcopy
 import numpy as np
 from numpy.linalg import inv, norm
-from normalize_angle import normalize_angle
-import itertools
+from deltatier.normalize_angle import normalize_angle
 import scipy
 import scipy.optimize
 from scipy.stats import norm as normaldist
@@ -48,9 +47,26 @@ MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azim
 IMPLICIT_BYTE_COST = 0.0
 EXPLICIT_BYTE_COST = 1.5
 
+"""
+All the todos here
+- list creation: maybe can pull straight from the launch file -- maybe unknown blue agents, 
+- no landmark_positions
+- approximate modem measurements as being taken currently
+- should add a parameter for regular kalman filter and deltatier
+- 
+
+Separate test for unknown blue agents, so we don't necessarily need a good starting position, acoustic modems will help out
+Should repeat the strategy with just launching the if statement to debug
+
+
+"""
+
 class KalmanFilter:
 
-    def __init__(self, blue_positions, landmark_positions, red_agent=False, is_deltatier=True):
+    def __init__(self, blue_positions, landmark_positions, red_agent=False, is_deltatier=True, \
+            known_posititon_unc=KNOWN_POSITION_UNCERTAINTY, \
+            known_velocity_unc=KNOWN_VELOCITY_UNCERTAINTY, \
+            unknown_agent_unc=UNKNOWN_AGENT_UNCERTAINTY):
         """
         first positions are blue
         next are landmark
@@ -76,20 +92,20 @@ class KalmanFilter:
             if not p: # unknown starting blue position
                 self.x_hat.extend([0]*3) # Position
                 self.x_hat.extend([0]*3) # Velocity
-                self.P.extend([UNKNOWN_AGENT_UNCERTAINTY]*3 + [KNOWN_VELOCITY_UNCERTAINTY]*3)
+                self.P.extend([unknown_agent_unc]*3 + [known_velocity_unc]*3)
             else:
                 self.x_hat.extend(p) # Position
                 self.x_hat.extend([0]*3) # Velocity
-                self.P.extend([KNOWN_POSITION_UNCERTAINTY]*3 + [KNOWN_VELOCITY_UNCERTAINTY]*3)
+                self.P.extend([known_posititon_unc]*3 + [known_velocity_unc]*3)
 
         if red_agent:
             self.x_hat.extend([0]*3) # Position
             self.x_hat.extend([0]*3) # Velocity
-            self.P.extend([UNKNOWN_AGENT_UNCERTAINTY]*3 + [UNKNOWN_AGENT_UNCERTAINTY]*3)
+            self.P.extend([unknown_agent_unc]*3 + [known_velocity_unc]*3)
 
         for p in landmark_positions:
             self.x_hat.extend(p) # Position (no velocity)
-            self.P.extend([LANDMARK_UNCERTAINTY, LANDMARK_UNCERTAINTY, KNOWN_POSITION_UNCERTAINTY]) # great x,y knowledge, low z
+            self.P.extend([LANDMARK_UNCERTAINTY, LANDMARK_UNCERTAINTY, known_posititon_unc]) # great x,y knowledge, low z
         
         self.NUM_STATES = len(self.x_hat)
         self.x_hat = np.reshape(self.x_hat, (-1,1))
@@ -114,6 +130,17 @@ class KalmanFilter:
             
             self.x_nav_history_prior = []
             self.P_nav_history_prior = []
+            
+
+    def get_agent_ids(self):
+        """
+        Returns the ids (startx's for agents)
+        """
+        ids = []
+        for a in range(self.BLUE_NUM + self.RED_NUM + self.LANDMARK_NUM):
+            ids.append( self._get_agent_state_index( a ) )
+        return ids
+
 
     def propogate(self, position_process_noise, velocity_process_noise):
         """
@@ -133,70 +160,6 @@ class KalmanFilter:
 
         return self.index
 
-    @staticmethod
-    def _propogate(x_hat, P, position_process_noise, velocity_process_noise, BLUE_NUM, RED_NUM, LANDMARK_NUM):
-        num_states = x_hat.shape[0]
-
-        # Create F and Q matrices
-        F = np.eye(num_states)
-        Q = []
-        for b in range(BLUE_NUM + RED_NUM):
-            F[6*b, 6*b + 3] = 1
-            F[6*b + 1, 6*b + 4] = 1
-            F[6*b + 2, 6*b + 5] = 1
-            Q.extend([position_process_noise]*3 + [velocity_process_noise]*3)
-        for l in range( LANDMARK_NUM ):
-            Q.extend([0]*3)
-        Q = np.diag(Q)
-
-        x_hat = F @ x_hat
-        P = F @ P @ F.T + Q
-
-        return x_hat, P
-
-    @staticmethod
-    def _filter_artificial_depth_static(x_hat, P, depth, BLUE_NUM, RED_NUM, LANDMARK_NUM, R=1e-2):
-
-        num_states = x_hat.shape[0]
-
-        for b in range(BLUE_NUM + RED_NUM):
-            H = np.zeros((1, num_states))
-            H[0, 6*b + 2] = 1
-
-            x = x_hat
-            P = P
-
-            K = P @ H.T @ inv(H @ P @ H.T + R)
-            x = x + K @ (depth - H @ x)
-            P = P - K @ H @ P
-
-            x_hat = x
-            P = P
-
-        num_dynamic_states = 6*(BLUE_NUM + RED_NUM)
-        for l in range(LANDMARK_NUM):
-            H = np.zeros((1, num_states))
-            H[0, num_dynamic_states + 3*l + 2] = 1
-
-            x = x_hat
-            P = P
-
-            K = P @ H.T @ inv(H @ P @ H.T + R)
-            x = x + K @ (depth - H @ x)
-            P = P - K @ H @ P
-
-            x_hat = x
-            P = P
-
-        return x_hat, P
-        
-    def _filter_artificial_depth(self, depth, R=1e-2):
-        """
-        Approximate the environment as 2D and fuse a certain depth for all agents/landmarks
-        """
-        self.x_hat, self.P = KalmanFilter._filter_artificial_depth_static(
-            self.x_hat, self.P, depth, self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R)
-
     # Either to an agent or landmark
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
         startx1 = self._get_agent_state_index(collecting_agent)
@@ -204,9 +167,10 @@ class KalmanFilter:
         self.x_hat, self.P = KalmanFilter._fuse_range_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
-        type_ind = MEAS_TYPES_INDICES.index("sonar_range")
-        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
-        self.ledger.append(meas_row)
+        if self.is_deltatier:
+            type_ind = MEAS_TYPES_INDICES.index("sonar_range")
+            meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+            self.ledger.append(meas_row)
 
     # Either to an agent or landmark
     def filter_azimuth_tracked(self, meas_value, R, collecting_agent, collected_agent): 
@@ -218,9 +182,10 @@ class KalmanFilter:
         self.x_hat, self.P = KalmanFilter._fuse_azimuth_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
-        type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
-        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
-        self.ledger.append(meas_row)
+        if self.is_deltatier:
+            type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
+            meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+            self.ledger.append(meas_row)
 
     # Used in minau project for psuedo-gps measurements from surface beacon
     def filter_range_from_untracked(self, meas_value, R, position, collected_agent, index=None):
@@ -234,10 +199,11 @@ class KalmanFilter:
             self.x_hat, self.P = KalmanFilter._fuse_range_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
-        type_ind = MEAS_TYPES_INDICES.index("modem_range")
-        meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
-        self.ledger.append(meas_row)
-        self.common_ledger.append(meas_row)
+        if self.is_deltatier:
+            type_ind = MEAS_TYPES_INDICES.index("modem_range")
+            meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
+            self.ledger.append(meas_row)
+            self.common_ledger.append(meas_row)
         
     # Used in minau project for psuedo-gps measurements from surface beacon
     def filter_azimuth_from_untracked(self, meas_value, R, position, collected_agent, index=None):
@@ -252,137 +218,11 @@ class KalmanFilter:
             self.x_hat, self.P = KalmanFilter._fuse_azimuth_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
-        type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
-        meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
-        self.ledger.append(meas_row)
-        self.common_ledger.append(meas_row)
-
-    @staticmethod
-    def _fuse_range_tracked(x_hat, P, startx1, startx2, meas_value, R):
-    
-        pred, H = KalmanFilter._predict_range(x_hat, startx1, startx2)
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x_hat = x_hat + K * (meas_value - pred)
-        P = P - K @ H @ P
-
-        return x_hat, P
-
-    @staticmethod
-    def _fuse_azimuth_tracked(x_hat, P, startx1, startx2, meas_value, R):
-        pred, H = KalmanFilter._predict_azimuth(x_hat, startx1, startx2)
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x_hat = x_hat + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
-
-        return x_hat, P
-
-    @staticmethod
-    def _fuse_range_from_untracked(x_hat, P, startx1, position, meas_value, R):
-        NUM_STATES = x_hat.shape[0]
-        x1 = x_hat[startx1, 0]
-        y1 = x_hat[startx1 + 1, 0]
-        z1 = x_hat[startx1 + 2, 0]
-        x2 = position[0]
-        y2 = position[1]
-        z2 = position[2]
-
-        delta_pred = np.array([x1 - x2,y1 - y2, z1 - z2])
-        pred = norm(delta_pred)
-
-        drdx1 = delta_pred[0] / norm(delta_pred)
-        drdy1 = delta_pred[1] / norm(delta_pred)
-        drdz1 = delta_pred[2] / norm(delta_pred)
-        
-        H = np.zeros((1, NUM_STATES))
-        H[0, startx1] = drdx1
-        H[0, startx1+1] = drdy1
-        H[0, startx1+2] = drdz1
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x_hat = x_hat + K * (meas_value - pred)
-        P = P - K @ H @ P
-
-        return x_hat, P
-
-    @staticmethod
-    def _fuse_azimuth_from_untracked(x_hat, P, startx1, position, meas_value, R):
-        NUM_STATES = x_hat.shape[0]
-
-        x1 = x_hat[startx1, 0]
-        y1 = x_hat[startx1 + 1, 0]
-        x2 = position[0]
-        y2 = position[1]
-
-        delta_pred = np.array([[x1 - x2],[y1 - y2]])
-        pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
-
-        dadx = -delta_pred[1,0] / norm(delta_pred)**2
-        dady = delta_pred[0,0] / norm(delta_pred)**2
-        H = np.zeros((1, NUM_STATES))
-        H[0, startx1] = dadx
-        H[0, startx1 + 1] = dady
-
-        K = P @ H.T @ inv(H @ P @ H.T + R)
-        x_hat = x_hat + K * normalize_angle(meas_value - pred)
-        P = P - K @ H @ P
-
-        return x_hat, P
-
-    @staticmethod
-    def _predict_range(x_hat, startx1, startx2):
-        NUM_STATES = x_hat.shape[0]
-
-        x1 = x_hat[startx1, 0]
-        y1 = x_hat[startx1 + 1, 0]
-        z1 = x_hat[startx1 + 2, 0]
-        x2 = x_hat[startx2, 0]
-        y2 = x_hat[startx2 + 1, 0]
-        z2 = x_hat[startx2 + 2, 0]
-
-        delta_pred = np.array([[x2 - x1], [y2 - y1], [z2 - z1]])
-        pred = norm(delta_pred)
-
-        drdx1 = (x1 - x2) / norm(delta_pred)
-        drdx2 = (x2 - x1) / norm(delta_pred)
-        drdy1 = (y1 - y2) / norm(delta_pred)
-        drdy2 = (y2 - y1) / norm(delta_pred)
-        drdz1 = (z1 - z2) / norm(delta_pred)
-        drdz2 = (z2 - z1) / norm(delta_pred)
-
-        H = np.zeros((1, NUM_STATES))
-        H[0, startx1] = drdx1
-        H[0, startx2] = drdx2
-        H[0, startx1+1] = drdy1
-        H[0, startx2+1] = drdy2
-        H[0, startx1+2] = drdz1
-        H[0, startx2+2] = drdz2
-
-        return pred, H
-    
-    @staticmethod
-    def _predict_azimuth(x_hat, startx1, startx2):
-        NUM_STATES = x_hat.shape[0]
-        x1 = x_hat[startx1, 0]
-        y1 = x_hat[startx1 + 1, 0]
-        x2 = x_hat[startx2, 0]
-        y2 = x_hat[startx2 + 1, 0]
-
-        delta_pred = np.array([[x2 - x1], [y2 - y1]])
-        pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
-
-        dadx1 = (y2 - y1) / norm(delta_pred)**2 # TODO check these are correct partials
-        dadx2 = -(y2 - y1) / norm(delta_pred)**2
-        dady1 = -(x2 - x1) / norm(delta_pred)**2
-        dady2 = (x2 - x1) / norm(delta_pred)**2
-        H = np.zeros((1, NUM_STATES))
-        H[0, startx1] = dadx1
-        H[0, startx2] = dadx2
-        H[0, startx1+1] = dady1
-        H[0, startx2+1] = dady2
-
-        return pred, H
+        if self.is_deltatier:
+            type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
+            meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
+            self.ledger.append(meas_row)
+            self.common_ledger.append(meas_row)
     
     def pull_buffer(self, mults, delta_dict, position_process_noise, velocity_process_noise, modem_loc, buffer_size):
         """
@@ -515,77 +355,6 @@ class KalmanFilter:
         self.last_share_index = self.index + 1 # Don't share this index again
 
         return mult, share_buffer, explicit_cnt, implicit_cnt
-    
-    @staticmethod
-    def _implicit_fuse(x_bar, P_bar, x_hat, P, x_ref, C, R, delta, h_x_hat, h_x_bar, h_x_ref, angle_meas):
-        mu = h_x_hat - h_x_bar
-        Qe = C @ P_bar @ C.T + R
-        alpha = h_x_ref - h_x_bar
-
-        Qf = lambda x : 1 - normaldist.cdf(x)
-
-        if angle_meas:
-            nu_minus = normalize_angle(-delta + alpha - mu) / np.sqrt(Qe)
-            nu_plus = normalize_angle(delta + alpha - mu) / np.sqrt(Qe)
-        else:
-            nu_minus = (-delta + alpha - mu) / np.sqrt(Qe)
-            nu_plus = (delta + alpha - mu) / np.sqrt(Qe)
-
-        tmp = (normaldist.pdf(nu_minus) - normaldist.pdf(nu_plus)) / (Qf(nu_minus) - Qf(nu_plus))
-        z_bar = tmp * np.sqrt(Qe)
-        tmp2 = (nu_minus * normaldist.pdf(nu_minus) - nu_plus*normaldist.pdf(nu_plus)) / (Qf(nu_minus) - Qf(nu_plus))
-        curly_theta = tmp**2 - tmp2;
-        K = P @ C.T @ inv( C @ P @ C.T + R)
-        x_hat = x_hat + K * z_bar
-        P = P - curly_theta * K @ C @ P
-
-        return x_hat, P
-
-    def _get_buffer_size(self, buffer_mat):
-        """
-        Calculates the number of explicit and implict measurements
-        """
-
-        index_col = MEAS_COLUMNS.index("type")
-        num_explicit, num_implicit = 0, 0
-
-        # Explicit: sonar range
-        meas_type = MEAS_TYPES_INDICES.index("sonar_range")
-        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
-        num_explicit += meas.shape[0]
-
-        # Explicit: sonar azimuth
-        meas_type = MEAS_TYPES_INDICES.index("sonar_azimuth")
-        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
-        num_explicit += meas.shape[0]
-
-        # Implicit: sonar range
-        meas_type = MEAS_TYPES_INDICES.index("sonar_range_implicit")
-        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
-        num_implicit += meas.shape[0]
-
-        # Implicit: sonar azimuth
-        meas_type = MEAS_TYPES_INDICES.index("sonar_azimuth_implicit")
-        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
-        num_implicit += meas.shape[0]
-
-        cost = num_explicit*EXPLICIT_BYTE_COST + num_implicit*IMPLICIT_BYTE_COST
-        return cost, num_explicit, num_implicit
-
-    @staticmethod
-    def _get_ledger_mat(ledger):
-        """
-        Assume we can share any measurements in the ledger since they were taken by us OR are modem measurements...
-        """
-        return np.array(ledger)
-
-    def _get_measurements_at_time(self, ledger_mat, index):
-        """
-        Returns all rows (measurements) in ledger_mat at the specified index
-        ledger_mat produced by first calling self._get_ledger_mat()
-        """
-        index_col = MEAS_COLUMNS.index("index")
-        return ledger_mat[ np.where(ledger_mat[:,index_col] == index)]
 
     def rx_buffer(self, mult, buffer, delta_dict, modem_loc, position_process_noise, velocity_process_noise, agent, fast_ci=False):
         """
@@ -739,21 +508,24 @@ class KalmanFilter:
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
                 # Go 8 -> 6
-                rot_mat_nav = np.array([
-                    [1, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 1, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 1, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 1, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 1, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 1, 0]]
-                )
-                nav_est_x = rot_mat_nav @ x_nav
-                nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+                # rot_mat_nav = np.array([
+                #     [1, 0, 0, 0, 0, 0, 0, 0],
+                #     [0, 1, 0, 0, 0, 0, 0, 0],
+                #     [0, 0, 1, 0, 0, 0, 0, 0],
+                #     [0, 0, 0, 0, 1, 0, 0, 0],
+                #     [0, 0, 0, 0, 0, 1, 0, 0],
+                #     [0, 0, 0, 0, 0, 0, 1, 0]]
+                # )
+                # nav_est_x = np.dot( rot_mat_nav, x_nav)
+                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+
+                nav_est_x = x_nav
+                nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
-                x_hat_agent = rot_mat @ x_hat
-                P_agent = rot_mat @ P @ rot_mat.T
+                x_hat_agent = np.dot(rot_mat, x_hat)
+                P_agent = np.dot( np.dot( rot_mat, P ), rot_mat.T)
 
                 if fast_ci:
                     mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
@@ -762,11 +534,11 @@ class KalmanFilter:
 
                 # PSCI for tracking filter
                 D_inv = inv(cov_result) - inv(P_agent)
-                D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
-                D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
-                D_inv_d_zeros = rot_mat.T @ D_inv_d
+                D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_agent), x_hat_agent)
+                D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
+                D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
                 P_new = inv( inv(P) + D_inv_zeros)
-                x_hat = P_new @ (inv(P) @ x_hat + D_inv_d_zeros )
+                x_hat = np.dot(P_new, np.dot( inv(P), x_hat) + D_inv_d_zeros )
                 P = P_new
 
         # end for index
@@ -819,21 +591,23 @@ class KalmanFilter:
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
                 # Go 8 -> 6
-                rot_mat_nav = np.array([
-                    [1, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 1, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 1, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 1, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 1, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 1, 0]]
-                )
-                nav_est_x = rot_mat_nav @ x_nav
-                nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+                # rot_mat_nav = np.array([
+                #     [1, 0, 0, 0, 0, 0, 0, 0],
+                #     [0, 1, 0, 0, 0, 0, 0, 0],
+                #     [0, 0, 1, 0, 0, 0, 0, 0],
+                #     [0, 0, 0, 0, 1, 0, 0, 0],
+                #     [0, 0, 0, 0, 0, 1, 0, 0],
+                #     [0, 0, 0, 0, 0, 0, 1, 0]]
+                # )
+                # nav_est_x = np.dot( rot_mat_nav, x_nav)
+                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                nav_est_x = x_nav
+                nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
-                x_hat_agent = rot_mat @ x_hat
-                P_agent = rot_mat @ P @ rot_mat.T
+                x_hat_agent = np.dot(rot_mat, x_hat)
+                P_agent = np.dot( np.dot( rot_mat, P ), rot_mat.T)
 
                 if fast_ci:
                     mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
@@ -842,12 +616,13 @@ class KalmanFilter:
 
                 # PSCI for tracking filter
                 D_inv = inv(cov_result) - inv(P_agent)
-                D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
-                D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
-                D_inv_d_zeros = rot_mat.T @ D_inv_d
+                D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_agent), x_hat_agent)
+                D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
+                D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
                 P_new = inv( inv(P) + D_inv_zeros)
-                x_hat = P_new @ (inv(P) @ x_hat + D_inv_d_zeros )
+                x_hat = np.dot(P_new, np.dot(inv(P), x_hat) + D_inv_d_zeros )
                 P = P_new
+
         self.x_hat = x_hat
         self.P = P
 
@@ -858,57 +633,337 @@ class KalmanFilter:
         if share_depth:
             self._filter_artificial_depth(x_nav[2])
 
-        self.x_nav_history_prior.append(deepcopy(x_nav))
-        self.P_nav_history_prior.append(deepcopy(P_nav))
+        if self.is_deltatier:
+            self.x_nav_history_prior.append(deepcopy(x_nav))
+            self.P_nav_history_prior.append(deepcopy(P_nav))
 
         # Go 8 -> 6
-        rot_mat_nav = np.array([
-            [1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0]]
-        )
-        nav_est_x = rot_mat_nav @ x_nav
-        nav_est_P = rot_mat_nav @ P_nav @ rot_mat_nav.T
+        # rot_mat_nav = np.array([
+        #     [1, 0, 0, 0, 0, 0, 0, 0],
+        #     [0, 1, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 1, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 1, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 1, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 1, 0]]
+        # )
+        # nav_est_x = np.dot( rot_mat_nav, x_nav)
+        # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+        nav_est_x = x_nav
+        nav_est_P = P_nav
 
-        rot_mat = np.zeros((6, self.x_hat.shape[0]))
-        rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
-        x_hat_agent = rot_mat @ self.x_hat
-        P_agent = rot_mat @ self.P @ rot_mat.T
+        x_hat_agent, P_agent, rot_mat = self.get_agent_states(agent)
 
         if fast_ci:
             mean_result, cov_result = KalmanFilter._fast_covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
         else:
             mean_result, cov_result = KalmanFilter._covariance_intersection(x_hat_agent, P_agent, nav_est_x, nav_est_P)
 
-        # PSCI for tracking filter
+        # PSCI for tracking filter        self.x_hat = P_new @ (inv(self.P) @ self.x_hat + D_inv_d_zeros )
         D_inv = inv(cov_result) - inv(P_agent)
-        D_inv_d = inv(cov_result) @ mean_result - inv(P_agent) @ x_hat_agent
-        D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
-        D_inv_d_zeros = rot_mat.T @ D_inv_d
+        D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_agent), x_hat_agent)
+        D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
+        D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
         P_new = inv( inv(self.P) + D_inv_zeros)
-        self.x_hat = P_new @ (inv(self.P) @ self.x_hat + D_inv_d_zeros )
+        self.x_hat = np.dot(P_new, np.dot(inv(self.P), self.x_hat) + D_inv_d_zeros )
         self.P = P_new
 
         # PSCI for navigation Filter (just X,Y)
-        rot_mat = np.zeros((2, 8))
+        rot_mat = np.zeros((2, 6))
         rot_mat[:2,:2] = np.eye(2)
         mean_result = mean_result[:2, 0].reshape(-1,1)
         cov_result = cov_result[:2, :2]
-        x_nav_position = rot_mat @ x_nav
-        P_nav_position = rot_mat @ P_nav @ rot_mat.T
-        
-        D_inv = inv(cov_result) - inv(P_nav_position)
-        D_inv_d = inv(cov_result) @ mean_result - inv(P_nav_position) @ x_nav_position
-        D_inv_zeros = rot_mat.T @ D_inv @ rot_mat
-        D_inv_d_zeros = rot_mat.T @ D_inv_d
-        P_nav_new = inv( inv(P_nav) + D_inv_zeros )
-        x_nav = P_nav_new @ ( inv(P_nav) @ x_nav + D_inv_d_zeros )
-        P_nav = P_nav_new
+        x_nav_position = np.dot( rot_mat, x_nav)
+        P_nav_position = np.dot( np.dot( rot_mat, P_nav), rot_mat.T)
 
+        # PSCI for Nav filter
+        D_inv = inv(cov_result) - inv(P_nav_position)
+        D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_nav_position), x_nav_position)
+        D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
+        D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
+        P_nav_new = inv( inv(P_nav) + D_inv_zeros)
+        x_nav = np.dot(P_nav_new, np.dot(inv(P_nav), x_nav) + D_inv_d_zeros )
+        P_nav = P_nav_new
+        
         return x_nav, P_nav
+
+    def get_agent_states(self, agent):
+        rot_mat = np.zeros((6, self.x_hat.shape[0]))
+        rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
+        x_hat_agent = np.dot( rot_mat, self.x_hat)
+        P_agent = np.dot( np.dot( rot_mat, self.P), rot_mat.T)
+
+        return x_hat_agent, P_agent, rot_mat
+
+    """ 
+    ################################################################################################# 
+    ################################# BEGIN PRIVATE MEMBER METHODS ##################################
+    #################################################################################################
+    """
+
+    @staticmethod
+    def _propogate(x_hat, P, position_process_noise, velocity_process_noise, BLUE_NUM, RED_NUM, LANDMARK_NUM):
+        num_states = x_hat.shape[0]
+
+        # Create F and Q matrices
+        F = np.eye(num_states)
+        Q = []
+        for b in range(BLUE_NUM + RED_NUM):
+            F[6*b, 6*b + 3] = 1
+            F[6*b + 1, 6*b + 4] = 1
+            F[6*b + 2, 6*b + 5] = 1
+            Q.extend([position_process_noise]*3 + [velocity_process_noise]*3)
+        for l in range( LANDMARK_NUM ):
+            Q.extend([0]*3)
+        Q = np.diag(Q)
+
+        x_hat = np.dot( F, x_hat)
+        P = np.dot(F, np.dot(P, F.T)) + Q
+
+        return x_hat, P
+
+    @staticmethod
+    def _fuse(x_hat, P, H, R, innovation):
+        K = np.dot( np.dot( P, H.T), inv(np.dot(H, np.dot(P, H.T)) + R))
+        x_hat = x_hat + np.dot(K, innovation )
+        P = P - np.dot(K, np.dot(H, P))
+        return x_hat, P
+
+    @staticmethod
+    def _filter_artificial_depth_static(x_hat, P, depth, BLUE_NUM, RED_NUM, LANDMARK_NUM, R=1e-2):
+
+        num_states = x_hat.shape[0]
+
+        for b in range(BLUE_NUM + RED_NUM):
+            H = np.zeros((1, num_states))
+            H[0, 6*b + 2] = 1
+
+            innovation = depth - np.dot(H, x_hat)
+            x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        num_dynamic_states = 6*(BLUE_NUM + RED_NUM)
+        for l in range(LANDMARK_NUM):
+            H = np.zeros((1, num_states))
+            H[0, num_dynamic_states + 3*l + 2] = 1
+
+            innovation = depth - np.dot(H, x_hat)
+            x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+        
+    def _filter_artificial_depth(self, depth, R=1e-2):
+        """
+        Approximate the environment as 2D and fuse a certain depth for all agents/landmarks
+        """
+        self.x_hat, self.P = KalmanFilter._filter_artificial_depth_static(
+            self.x_hat, self.P, depth, self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R)
+
+    @staticmethod
+    def _fuse_range_tracked(x_hat, P, startx1, startx2, meas_value, R):
+    
+        pred, H = KalmanFilter._predict_range(x_hat, startx1, startx2)
+
+        innovation = meas_value - pred
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
+    def _fuse_azimuth_tracked(x_hat, P, startx1, startx2, meas_value, R):
+        pred, H = KalmanFilter._predict_azimuth(x_hat, startx1, startx2)
+
+        innovation = normalize_angle( meas_value - pred )
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
+    def _fuse_range_from_untracked(x_hat, P, startx1, position, meas_value, R):
+        NUM_STATES = x_hat.shape[0]
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        z1 = x_hat[startx1 + 2, 0]
+        x2 = position[0]
+        y2 = position[1]
+        z2 = position[2]
+
+        delta_pred = np.array([x1 - x2,y1 - y2, z1 - z2])
+        if norm(delta_pred) < 1e-3:
+            delta_pred[0,0] = 1e-3
+            delta_pred[1,0] = 1e-3
+            delta_pred[2,0] = 1e-3
+        pred = norm(delta_pred)
+
+        drdx1 = delta_pred[0] / norm(delta_pred)
+        drdy1 = delta_pred[1] / norm(delta_pred)
+        drdz1 = delta_pred[2] / norm(delta_pred)
+        
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1] = drdx1
+        H[0, startx1+1] = drdy1
+        H[0, startx1+2] = drdz1
+
+        innovation = meas_value - pred
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
+    def _fuse_azimuth_from_untracked(x_hat, P, startx1, position, meas_value, R):
+        NUM_STATES = x_hat.shape[0]
+
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        x2 = position[0]
+        y2 = position[1]
+
+        delta_pred = np.array([[x1 - x2],[y1 - y2]])
+        if norm(delta_pred) < 1e-3:
+            delta_pred[0,0] = 1e-3
+            delta_pred[1,0] = 1e-3
+        pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
+
+        dadx = -delta_pred[1,0] / norm(delta_pred)**2
+        dady = delta_pred[0,0] / norm(delta_pred)**2
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1] = dadx
+        H[0, startx1 + 1] = dady
+        
+        innovation = normalize_angle( meas_value - pred )
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
+    def _predict_range(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        z1 = x_hat[startx1 + 2, 0]
+        x2 = x_hat[startx2, 0]
+        y2 = x_hat[startx2 + 1, 0]
+        z2 = x_hat[startx2 + 2, 0]
+
+        delta_pred = np.array([[x2 - x1], [y2 - y1], [z2 - z1]])
+        if norm(delta_pred) < 1e-3:
+            delta_pred[0,0] = 1e-3
+            delta_pred[1,0] = 1e-3
+            delta_pred[2,0] = 1e-3
+        pred = norm(delta_pred)
+
+        drdx1 = (x1 - x2) / norm(delta_pred)
+        drdx2 = (x2 - x1) / norm(delta_pred)
+        drdy1 = (y1 - y2) / norm(delta_pred)
+        drdy2 = (y2 - y1) / norm(delta_pred)
+        drdz1 = (z1 - z2) / norm(delta_pred)
+        drdz2 = (z2 - z1) / norm(delta_pred)
+
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1] = drdx1
+        H[0, startx2] = drdx2
+        H[0, startx1+1] = drdy1
+        H[0, startx2+1] = drdy2
+        H[0, startx1+2] = drdz1
+        H[0, startx2+2] = drdz2
+
+        return pred, H
+    
+    @staticmethod
+    def _predict_azimuth(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+        x1 = x_hat[startx1, 0]
+        y1 = x_hat[startx1 + 1, 0]
+        x2 = x_hat[startx2, 0]
+        y2 = x_hat[startx2 + 1, 0]
+
+        delta_pred = np.array([[x2 - x1], [y2 - y1]])
+        if norm(delta_pred) < 1e-3:
+            delta_pred[0,0] = 1e-3
+            delta_pred[1,0] = 1e-3
+        pred = np.arctan2(delta_pred[1,0], delta_pred[0,0])
+
+        dadx1 = (y2 - y1) / norm(delta_pred)**2 # TODO check these are correct partials
+        dadx2 = -(y2 - y1) / norm(delta_pred)**2
+        dady1 = -(x2 - x1) / norm(delta_pred)**2
+        dady2 = (x2 - x1) / norm(delta_pred)**2
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1] = dadx1
+        H[0, startx2] = dadx2
+        H[0, startx1+1] = dady1
+        H[0, startx2+1] = dady2
+
+        return pred, H
+    
+    @staticmethod
+    def _implicit_fuse(x_bar, P_bar, x_hat, P, x_ref, C, R, delta, h_x_hat, h_x_bar, h_x_ref, angle_meas):
+        mu = h_x_hat - h_x_bar
+        Qe = np.dot(C, np.dot(P_bar, C.T)) + R
+        alpha = h_x_ref - h_x_bar
+
+        Qf = lambda x : 1 - normaldist.cdf(x)
+
+        if angle_meas:
+            nu_minus = normalize_angle(-delta + alpha - mu) / np.sqrt(Qe)
+            nu_plus = normalize_angle(delta + alpha - mu) / np.sqrt(Qe)
+        else:
+            nu_minus = (-delta + alpha - mu) / np.sqrt(Qe)
+            nu_plus = (delta + alpha - mu) / np.sqrt(Qe)
+
+        tmp = (normaldist.pdf(nu_minus) - normaldist.pdf(nu_plus)) / (Qf(nu_minus) - Qf(nu_plus))
+        z_bar = tmp * np.sqrt(Qe)
+        tmp2 = (nu_minus * normaldist.pdf(nu_minus) - nu_plus*normaldist.pdf(nu_plus)) / (Qf(nu_minus) - Qf(nu_plus))
+        curly_theta = tmp**2 - tmp2;
+        K = np.dot(P, np.dot(C.T, inv( np.dot(C, np.dot(P, C.T)) + R)))
+        x_hat = x_hat + K * z_bar
+        P = P - curly_theta * np.dot(K, np.dot(C, P))
+
+        return x_hat, P
+
+    def _get_buffer_size(self, buffer_mat):
+        """
+        Calculates the number of explicit and implict measurements
+        """
+
+        index_col = MEAS_COLUMNS.index("type")
+        num_explicit, num_implicit = 0, 0
+
+        # Explicit: sonar range
+        meas_type = MEAS_TYPES_INDICES.index("sonar_range")
+        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
+        num_explicit += meas.shape[0]
+
+        # Explicit: sonar azimuth
+        meas_type = MEAS_TYPES_INDICES.index("sonar_azimuth")
+        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
+        num_explicit += meas.shape[0]
+
+        # Implicit: sonar range
+        meas_type = MEAS_TYPES_INDICES.index("sonar_range_implicit")
+        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
+        num_implicit += meas.shape[0]
+
+        # Implicit: sonar azimuth
+        meas_type = MEAS_TYPES_INDICES.index("sonar_azimuth_implicit")
+        meas = buffer_mat[ np.where(buffer_mat[:,index_col] == meas_type)]
+        num_implicit += meas.shape[0]
+
+        cost = num_explicit*EXPLICIT_BYTE_COST + num_implicit*IMPLICIT_BYTE_COST
+        return cost, num_explicit, num_implicit
+
+    @staticmethod
+    def _get_ledger_mat(ledger):
+        """
+        Assume we can share any measurements in the ledger since they were taken by us OR are modem measurements...
+        """
+        return np.array(ledger)
+
+    def _get_measurements_at_time(self, ledger_mat, index):
+        """
+        Returns all rows (measurements) in ledger_mat at the specified index
+        ledger_mat produced by first calling self._get_ledger_mat()
+        """
+        index_col = MEAS_COLUMNS.index("index")
+        return ledger_mat[ np.where(ledger_mat[:,index_col] == index)]
 
     @staticmethod
     def _covariance_intersection(xa, Pa, xb, Pb):
