@@ -92,7 +92,7 @@ class ETDDF_Node:
         rospy.Subscriber( strap_topic, Odometry, self.nav_filter_callback, queue_size=1)
         self.intersection_pub = rospy.Publisher("set_pose", PoseWithCovarianceStamped, queue_size=1)
         self.cuprint("Waiting for strapdown")
-        # rospy.wait_for_message( strap_topic, Odometry)
+        rospy.wait_for_message( strap_topic, Odometry)
         self.cuprint("Strapdown found")
 
         # Sonar Subscription
@@ -189,7 +189,7 @@ class ETDDF_Node:
         for asset in self.blue_agent_names:
             
             ind = self.blue_agent_names.index(asset)
-            x_hat_agent, P_agent = self.kf.get_agent_states(ind)
+            x_hat_agent, P_agent, _ = self.kf.get_agent_states(ind)
             pose_cov = np.zeros((6,6))
             pose_cov[:3,:3] = P_agent[:3,:3]
             if asset == self.my_name:
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     rospy.init_node("etddf_node")
     et_node = ETDDF_Node()
 
-    debug = True
+    debug = False
     if not debug:
         rospy.spin()
     else:

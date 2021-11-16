@@ -538,7 +538,7 @@ class KalmanFilter:
                 D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
                 D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
                 P_new = inv( inv(P) + D_inv_zeros)
-                x_hat = np.dot(P_new, np.dot( (inv(P), x_hat) + D_inv_d_zeros ) )
+                x_hat = np.dot(P_new, np.dot( inv(P), x_hat) + D_inv_d_zeros )
                 P = P_new
 
         # end for index
@@ -620,7 +620,7 @@ class KalmanFilter:
                 D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
                 D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
                 P_new = inv( inv(P) + D_inv_zeros)
-                x_hat = np.dot(P_new, np.dot( (inv(P), x_hat) + D_inv_d_zeros ) )
+                x_hat = np.dot(P_new, np.dot(inv(P), x_hat) + D_inv_d_zeros )
                 P = P_new
 
         self.x_hat = x_hat
@@ -663,12 +663,12 @@ class KalmanFilter:
         D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_agent), x_hat_agent)
         D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
         D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
-        P_new = inv( inv(P) + D_inv_zeros)
-        self.x_hat = np.dot(P_new, np.dot( (inv(self.P), self.x_hat) + D_inv_d_zeros ) )
+        P_new = inv( inv(self.P) + D_inv_zeros)
+        self.x_hat = np.dot(P_new, np.dot(inv(self.P), self.x_hat) + D_inv_d_zeros )
         self.P = P_new
 
         # PSCI for navigation Filter (just X,Y)
-        rot_mat = np.zeros((2, 8))
+        rot_mat = np.zeros((2, 6))
         rot_mat[:2,:2] = np.eye(2)
         mean_result = mean_result[:2, 0].reshape(-1,1)
         cov_result = cov_result[:2, :2]
@@ -680,9 +680,9 @@ class KalmanFilter:
         D_inv_d = np.dot( inv(cov_result), mean_result) - np.dot( inv(P_nav_position), x_nav_position)
         D_inv_zeros = np.dot( np.dot( rot_mat.T, D_inv), rot_mat)
         D_inv_d_zeros = np.dot( rot_mat.T, D_inv_d)
-        P_nav_new = inv( inv(P) + D_inv_zeros)
-        x_nav = np.dot(P_new, np.dot( (inv(P), x_hat) + D_inv_d_zeros ) )
-        P_nav = P_new
+        P_nav_new = inv( inv(P_nav) + D_inv_zeros)
+        x_nav = np.dot(P_nav_new, np.dot(inv(P_nav), x_nav) + D_inv_d_zeros )
+        P_nav = P_nav_new
         
         return x_nav, P_nav
 
