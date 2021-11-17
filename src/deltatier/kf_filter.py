@@ -48,7 +48,7 @@ MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azim
 IMPLICIT_BYTE_COST = 0.0
 EXPLICIT_BYTE_COST = 1.5
 
-EIGHT_STATE_NAV_FILTER = True # else 6 states
+EIGHT_STATE_NAV_FILTER = False # else 6 states
 
 """
 All the todos here
