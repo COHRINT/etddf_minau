@@ -10,10 +10,12 @@ Start with just taking a global modem measurement of all agents on every time cy
 
 def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location, w, \
     w_perceived_modem_range, w_perceived_modem_azimuth, position_process_noise, \
-    velocity_process_noise, buffer_size, delta_range, delta_dict):
+    velocity_process_noise, buffer_size, delta_range, delta_dict, x_gt_history):
 
-    ping_delay = 3
-    broadcast_delay = 4
+    # ping_delay = 3
+    # broadcast_delay = 4
+    ping_delay = 8
+    broadcast_delay = 8
 
     num_agents = x_gt.shape[0] / STATES
 
@@ -31,11 +33,13 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
     if current_iter == ping_time:
 
         
-
+        past_index = loop_num
         for b in range(BLUE_NUM):
+            past_index = loop_num - ping_delay*b - broadcast_delay
 
             # Generate measurement
-            agent_states_gt = x_gt[STATES*b : STATES*(b+1),0]
+            agent_states_gt = x_gt_history[STATES*b : STATES*(b+1),past_index]
+            # agent_states_gt = x_gt[STATES*b : STATES*(b+1),0]
             agent_position_gt = agent_states_gt[:3]
 
             modem_location = np.array(modem_location)
@@ -45,15 +49,12 @@ def modem_schedule(loop_num, kfs, x_gt, agent, STATES, BLUE_NUM, modem_location,
             truth_azimuth = np.arctan2(delta[1], delta[0])
             azimuth_meas = truth_azimuth + np.random.normal(0.0, w)
 
-            kf.filter_range_from_untracked(range_meas, w_perceived_modem_range, modem_location, b)
-            kf.filter_azimuth_from_untracked(azimuth_meas, w_perceived_modem_azimuth, modem_location, b)
+            kf.filter_range_from_untracked(range_meas, w_perceived_modem_range, modem_location, b, index=past_index)
+            kf.filter_azimuth_from_untracked(azimuth_meas, w_perceived_modem_azimuth, modem_location, b, index=past_index)
+            # kf.filter_range_from_untracked(range_meas, w_perceived_modem_range, modem_location, b)
+            # kf.filter_azimuth_from_untracked(azimuth_meas, w_perceived_modem_azimuth, modem_location, b)
             
-            # TODO fix catch_up()
-            # print("Catching up...")
-            # x_hat_prior = deepcopy(kf.x_hat)
-            # kf.catch_up(loop_num - 8, modem_location, position_process_noise, velocity_process_noise, b, fast_ci=False)
-            # x_hat_post_catchup = deepcopy(kf.x_hat)
-            # assert np.array_equal(x_hat_prior, x_hat_post_catchup)
+        kf.catch_up(past_index, modem_location, position_process_noise, velocity_process_noise, agent, fast_ci=False)
         
     else: # Check if an agent is sharing
         

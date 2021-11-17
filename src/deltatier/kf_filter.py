@@ -2,6 +2,7 @@ from copy import deepcopy
 import numpy as np
 from numpy.linalg import inv, norm
 from deltatier.normalize_angle import normalize_angle
+# from normalize_angle import normalize_angle
 import scipy
 import scipy.optimize
 from scipy.stats import norm as normaldist
@@ -46,6 +47,8 @@ MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azim
 
 IMPLICIT_BYTE_COST = 0.0
 EXPLICIT_BYTE_COST = 1.5
+
+EIGHT_STATE_NAV_FILTER = False # else 6 states
 
 """
 All the todos here
@@ -111,13 +114,15 @@ class KalmanFilter:
         self.x_hat = np.reshape(self.x_hat, (-1,1))
         self.P = np.diag(self.P)
 
+        # Used for OOSM and DT
+        self.x_hat_history_prior = [] # x_hat at index is estimate prior to index filtering step
+        self.P_history_prior = []
+        self.ledger = []
+        self.x_nav_history_prior = []
+        self.P_nav_history_prior = []
+
         self.is_deltatier = is_deltatier
         if self.is_deltatier:
-            self.x_hat_history_prior = [] # x_hat at index is estimate prior to index filtering step
-            self.P_history_prior = []
-
-            self.ledger = []
-
             self.x_common = self.x_hat
             self.P_common = self.P
             self.common_ledger = [] # Just for modem updates
@@ -127,10 +132,6 @@ class KalmanFilter:
             Since the buffer does not contain the modem meas, we must introduce some other way
             """
             self.last_share_index = 0
-            
-            self.x_nav_history_prior = []
-            self.P_nav_history_prior = []
-            
 
     def get_agent_ids(self):
         """
@@ -149,9 +150,8 @@ class KalmanFilter:
         self.index += 1
 
         # Save the last estimate
-        if self.is_deltatier:
-            self.x_hat_history_prior.append( np.copy(self.x_hat))
-            self.P_history_prior.append( np.copy(self.P))
+        self.x_hat_history_prior.append( np.copy(self.x_hat))
+        self.P_history_prior.append( np.copy(self.P))
 
         self.x_hat, self.P = KalmanFilter._propogate( \
             self.x_hat, self.P, position_process_noise, \
@@ -167,10 +167,9 @@ class KalmanFilter:
         self.x_hat, self.P = KalmanFilter._fuse_range_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
-        if self.is_deltatier:
-            type_ind = MEAS_TYPES_INDICES.index("sonar_range")
-            meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
-            self.ledger.append(meas_row)
+        type_ind = MEAS_TYPES_INDICES.index("sonar_range")
+        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+        self.ledger.append(meas_row)
 
     # Either to an agent or landmark
     def filter_azimuth_tracked(self, meas_value, R, collecting_agent, collected_agent): 
@@ -182,10 +181,9 @@ class KalmanFilter:
         self.x_hat, self.P = KalmanFilter._fuse_azimuth_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
-        if self.is_deltatier:
-            type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
-            meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
-            self.ledger.append(meas_row)
+        type_ind = MEAS_TYPES_INDICES.index("sonar_azimuth")
+        meas_row = [type_ind, self.index, startx1, startx2, meas_value, R]
+        self.ledger.append(meas_row)
 
     # Used in minau project for psuedo-gps measurements from surface beacon
     def filter_range_from_untracked(self, meas_value, R, position, collected_agent, index=None):
@@ -199,10 +197,11 @@ class KalmanFilter:
             self.x_hat, self.P = KalmanFilter._fuse_range_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
+        type_ind = MEAS_TYPES_INDICES.index("modem_range")
+        ind = index if index is not None else self.index
+        meas_row = [type_ind, ind, startx1, -1, meas_value, R]
+        self.ledger.append(meas_row)
         if self.is_deltatier:
-            type_ind = MEAS_TYPES_INDICES.index("modem_range")
-            meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
-            self.ledger.append(meas_row)
             self.common_ledger.append(meas_row)
         
     # Used in minau project for psuedo-gps measurements from surface beacon
@@ -218,10 +217,11 @@ class KalmanFilter:
             self.x_hat, self.P = KalmanFilter._fuse_azimuth_from_untracked(self.x_hat, self.P, startx1, position, meas_value, R)
 
         # Add to ledger
-        if self.is_deltatier:
-            type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
-            meas_row = [type_ind, self.index, startx1, -1, meas_value, R]
-            self.ledger.append(meas_row)
+        type_ind = MEAS_TYPES_INDICES.index("modem_azimuth")
+        ind = index if index is not None else self.index
+        meas_row = [type_ind, ind, startx1, -1, meas_value, R]
+        self.ledger.append(meas_row)
+        if self.is_deltatier:            
             self.common_ledger.append(meas_row)
     
     def pull_buffer(self, mults, delta_dict, position_process_noise, velocity_process_noise, modem_loc, buffer_size):
@@ -507,20 +507,22 @@ class KalmanFilter:
                 x_nav = self.x_nav_history_prior[index]
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
-                # Go 8 -> 6
-                # rot_mat_nav = np.array([
-                #     [1, 0, 0, 0, 0, 0, 0, 0],
-                #     [0, 1, 0, 0, 0, 0, 0, 0],
-                #     [0, 0, 1, 0, 0, 0, 0, 0],
-                #     [0, 0, 0, 0, 1, 0, 0, 0],
-                #     [0, 0, 0, 0, 0, 1, 0, 0],
-                #     [0, 0, 0, 0, 0, 0, 1, 0]]
-                # )
-                # nav_est_x = np.dot( rot_mat_nav, x_nav)
-                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
-
-                nav_est_x = x_nav
-                nav_est_P = P_nav
+                
+                if EIGHT_STATE_NAV_FILTER:
+                    # Go 8 -> 6
+                    rot_mat_nav = np.array([
+                        [1, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 1, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 1, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 1, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 1, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 1, 0]]
+                    )
+                    nav_est_x = np.dot( rot_mat_nav, x_nav)
+                    nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                else:
+                    nav_est_x = x_nav
+                    nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
@@ -552,7 +554,6 @@ class KalmanFilter:
         """
         In the case of OOSM catch the current filter up to the current timestep
         """
-        raise NotImplementedError("There is a bug somewhere in the rewind CI with nav filter")
         x_hat = deepcopy(self.x_hat_history_prior[start_index])
         P = deepcopy(self.P_history_prior[start_index])
 
@@ -590,19 +591,22 @@ class KalmanFilter:
                 x_nav = self.x_nav_history_prior[index]
                 P_nav = self.P_nav_history_prior[index]
                 x_hat, P = KalmanFilter._filter_artificial_depth_static(x_hat, P, x_nav[2], self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R=1e-2)
-                # Go 8 -> 6
-                # rot_mat_nav = np.array([
-                #     [1, 0, 0, 0, 0, 0, 0, 0],
-                #     [0, 1, 0, 0, 0, 0, 0, 0],
-                #     [0, 0, 1, 0, 0, 0, 0, 0],
-                #     [0, 0, 0, 0, 1, 0, 0, 0],
-                #     [0, 0, 0, 0, 0, 1, 0, 0],
-                #     [0, 0, 0, 0, 0, 0, 1, 0]]
-                # )
-                # nav_est_x = np.dot( rot_mat_nav, x_nav)
-                # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
-                nav_est_x = x_nav
-                nav_est_P = P_nav
+                
+                if EIGHT_STATE_NAV_FILTER:
+                    # Go 8 -> 6
+                    rot_mat_nav = np.array([
+                        [1, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 1, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 1, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 1, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 1, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 1, 0]]
+                    )
+                    nav_est_x = np.dot( rot_mat_nav, x_nav)
+                    nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+                else:
+                    nav_est_x = x_nav
+                    nav_est_P = P_nav
 
                 rot_mat = np.zeros((6, x_hat.shape[0]))
                 rot_mat[:,6*agent:6*(agent+1)] = np.eye(6)
@@ -637,19 +641,21 @@ class KalmanFilter:
             self.x_nav_history_prior.append(deepcopy(x_nav))
             self.P_nav_history_prior.append(deepcopy(P_nav))
 
-        # Go 8 -> 6
-        # rot_mat_nav = np.array([
-        #     [1, 0, 0, 0, 0, 0, 0, 0],
-        #     [0, 1, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 1, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 1, 0, 0, 0],
-        #     [0, 0, 0, 0, 0, 1, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 1, 0]]
-        # )
-        # nav_est_x = np.dot( rot_mat_nav, x_nav)
-        # nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
-        nav_est_x = x_nav
-        nav_est_P = P_nav
+        if EIGHT_STATE_NAV_FILTER:
+            # Go 8 -> 6            
+            rot_mat_nav = np.array([
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 1, 0]]
+            )
+            nav_est_x = np.dot( rot_mat_nav, x_nav)
+            nav_est_P = np.dot( np.dot(rot_mat_nav, P_nav), rot_mat_nav.T)
+        else:
+            nav_est_x = x_nav
+            nav_est_P = P_nav
 
         x_hat_agent, P_agent, rot_mat = self.get_agent_states(agent)
 
@@ -668,7 +674,7 @@ class KalmanFilter:
         self.P = P_new
 
         # PSCI for navigation Filter (just X,Y)
-        rot_mat = np.zeros((2, 6))
+        rot_mat = np.zeros((2, 8)) if EIGHT_STATE_NAV_FILTER else np.zeros((2, 6))
         rot_mat[:2,:2] = np.eye(2)
         mean_result = mean_result[:2, 0].reshape(-1,1)
         cov_result = cov_result[:2, :2]
