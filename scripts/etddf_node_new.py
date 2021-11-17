@@ -39,6 +39,8 @@ class ETDDF_Node:
         assert self.topside_name not in self.blue_agent_names
 
         red_agent_name = rospy.get_param("~red_team_name")
+
+        self.update_times = []
         
         self.red_agent_exists = red_agent_name != ""
         if self.red_agent_exists:
@@ -131,6 +133,7 @@ class ETDDF_Node:
             return
 
         self.kf.propogate(self.position_process_noise, self.velocity_process_noise)
+        self.update_times.append(t_now)
 
         # Update orientation
         last_orientation_quat = odom.pose.pose.orientation
@@ -244,6 +247,8 @@ class ETDDF_Node:
         # Modem Meas taken by topside
         if msg.src_asset == self.topside_name:
             self.cuprint("Receiving Surface Modem Measurements")
+            meas_indices = []
+            modem_loc = None
 
             # Approximate all modem measurements as being taken at this time
             for meas in msg.measurements:
@@ -254,6 +259,9 @@ class ETDDF_Node:
                     modem_loc = self.force_modem_pose[:3]
                     modem_ori = self.force_modem_pose[3]
                 self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
+
+                meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
+                meas_indices.append(meas_index)
                 
                 # Approximate the fuse on the next update, so we can get other asset's position immediately
                 if meas.meas_type == "modem_elevation":
@@ -268,14 +276,19 @@ class ETDDF_Node:
                     agent = meas.measured_asset
                     agent_id = self.blue_agent_names.index(agent)
                     R = self.meas_variances["modem_az"]
-                    self.kf.filter_azimuth_from_untracked( meas_value_rad, R, modem_loc, agent_id, index=None)
+                    self.kf.filter_azimuth_from_untracked( meas_value_rad, R, modem_loc, agent_id, index=meas_index)
 
                 elif meas.meas_type == "modem_range":
 
                     agent = meas.measured_asset
                     agent_id = self.blue_agent_names.index(agent)
                     R = self.meas_variances["modem_range"]
-                    self.kf.filter_range_from_untracked( meas.data, R, modem_loc, agent_id, index=None)
+                    self.kf.filter_range_from_untracked( meas.data, R, modem_loc, agent_id, index=meas_index)
+
+            if meas_indices: # we received measurements
+                min_index = min(meas_indices)
+                my_id = self.blue_agent_names.index(self.my_name)
+                self.kf.catch_up(min_index, modem_loc, self.position_process_noise, self.velocity_process_noise, my_id, fast_ci=False)
 
         elif self.is_deltatier:
             raise NotImplementedError("DT is not supported yet")
