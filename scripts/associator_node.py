@@ -184,7 +184,7 @@ class SonarAssociator:
             R = np.array( [[unc_x, 0],[0, unc_x]]) # TODO actual approximation with rotated covariance
             t = msg.header.stamp
 
-            agent = self.associator.associate(agent_dict, meas, R, t.secs)
+            agent = self.associator.associate(agent_dict, meas, R, t.secs, association_sigma=4)
             self.prototrack = self.associator.get_proto()
 
             # print("Sonar meas information")

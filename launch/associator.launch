@@ -1,6 +1,6 @@
 <launch>
 
-    <arg name="blue_team_names" default="[bluerov2_5]" />
+    <arg name="blue_team_names" default="[bluerov2_5, bluerov2_7]" />
     <arg name="red_agent_name" default="" />
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
 
