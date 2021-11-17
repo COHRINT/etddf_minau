@@ -44,7 +44,7 @@ STATES = 8 # Each agent has x,y,z, theta, x_vel,y_vel, z_vel, theta_vel
 TRACK_STATES = 6 * NUM_AGENTS # x,y,z, x_dot, y_dot, z_dot for each agent
 TOTAL_STATES = STATES * NUM_AGENTS
 TOTAL_TRACK_STATES = TRACK_STATES * BLUE_NUM
-NUM_LOOPS = 500
+NUM_LOOPS = 300
 MAP_DIM = 20 # Square with side length
 PROB_DETECTION = 1.0
 SONAR_RANGE = 30.0
@@ -126,9 +126,9 @@ else:
 blue_filters = []
 for b in range(BLUE_NUM):
     blue_position = deepcopy(blue_positions)
-    save_value = blue_position[b]
-    blue_position = [[]] * len(blue_position)
-    blue_position[b] = save_value
+    # save_value = blue_position[b]
+    # blue_position = [[]] * len(blue_position)
+    # blue_position[b] = save_value
 
     kf = KalmanFilter(blue_position, landmark_positions, RED_NUM, is_deltatier=True)
     blue_filters.append( kf )
@@ -214,7 +214,7 @@ for loop_num in range(NUM_LOOPS):
     for a in range(BLUE_NUM):
         modem_schedule(loop_num, blue_filters, x_gt, a, STATES, BLUE_NUM, MODEM_LOCATION, w, \
             w_perceived_modem_range, w_perceived_modem_azimuth, q_perceived_tracking_pos, \
-            q_perceived_tracking_vel, BUFFER_SIZE, DELTA_RANGE, DELTA_DICT)
+            q_perceived_tracking_vel, BUFFER_SIZE, DELTA_RANGE, DELTA_DICT, x_gt_history)
 
     # Intersect estimates
     for a in range(BLUE_NUM):

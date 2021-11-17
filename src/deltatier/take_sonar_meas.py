@@ -87,7 +87,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                 taker_position = np.reshape( x_hat[6*agent:6*agent+2,0], (-1,1) )
                 global_meas = meas + taker_position
                 R = np.eye(2) # Not used rn...
-                associated_agent, _ = associator.associate(agent_dict, global_meas, R, loop_num)
+                associated_agent = associator.associate(agent_dict, global_meas, R, loop_num)
                 if associated_agent == num_agents:
                     kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
                     kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
@@ -125,7 +125,7 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                 taker_position = np.reshape( x_hat[6*agent:6*agent+2,0], (-1,1) )
                 global_meas = meas + taker_position
                 R = np.eye(2) # Not used rn...
-                associated_agent, _ = associator.associate(agent_dict, global_meas, R, loop_num)
+                associated_agent = associator.associate(agent_dict, global_meas, R, loop_num)
                 proto = associator.get_proto()
 
                 if associated_agent != "proto" and associated_agent != "none":
@@ -136,4 +136,4 @@ def take_sonar_meas(kf, associator, x_gt, x_nav, agent, w, w_perceived_range, \
                     kf.filter_range_tracked(rel_range_meas, w_perceived_range, agent, associated_agent)
                     kf.filter_azimuth_tracked(rel_azimuth_meas, w_perceieved_azimuth, agent, associated_agent)
 
-    return scan_control(scan_start_angle, agent_position, agent_dict, proto, SCAN_ANGLE_SIZE, ping_thresh, lost_thresh)
+    return scan_control(scan_start_angle, agent_position, agent_dict, proto, SCAN_ANGLE_SIZE, ping_thresh, lost_thresh)[0]
