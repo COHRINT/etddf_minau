@@ -262,28 +262,27 @@ class ETDDF_Node:
 
                 meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
                 meas_indices.append(meas_index)
-                
+                agent = meas.measured_asset
+                agent_id = self.blue_agent_names.index(agent)
+
                 # Approximate the fuse on the next update, so we can get other asset's position immediately
                 if meas.meas_type == "modem_elevation":
 
                     rospy.logerr("Ignoring Modem Elevation Measurement since we have depth measurements")
                     continue
 
-                elif meas.meas_type == "modem_azimuth":
+                elif meas.meas_type == "modem_azimuth" and agent != self.my_name:
 
                     meas.data += modem_ori
                     meas_value_rad = np.radians(meas.data)
-                    agent = meas.measured_asset
-                    agent_id = self.blue_agent_names.index(agent)
                     R = self.meas_variances["modem_az"]
                     self.kf.filter_azimuth_from_untracked( meas_value_rad, R, modem_loc, agent_id, index=meas_index)
 
                 elif meas.meas_type == "modem_range":
-
+                    BIAS = 0.5
                     agent = meas.measured_asset
-                    agent_id = self.blue_agent_names.index(agent)
                     R = self.meas_variances["modem_range"]
-                    self.kf.filter_range_from_untracked( meas.data, R, modem_loc, agent_id, index=meas_index)
+                    self.kf.filter_range_from_untracked( meas.data - BIAS, R, modem_loc, agent_id, index=meas_index)
 
             if meas_indices: # we received measurements
                 min_index = min(meas_indices)
