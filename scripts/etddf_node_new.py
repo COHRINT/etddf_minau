@@ -203,6 +203,11 @@ class ETDDF_Node:
             if asset == self.my_name:
                 pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]),last_orientation_quat)
                 pose_cov[3:,3:] = orientation_cov[3:,3:]
+            elif "red" in asset:
+                pose_cov = 5*np.eye(6) # Just set single uncertainty
+                red_agent_depth = -0.7
+                pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],red_agent_depth), Quaternion(0,0,0,1))
+                pose_cov[3:,3:] = -np.eye(3)
             else:
                 pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
                 pose_cov[3:,3:] = -np.eye(3)
@@ -225,9 +230,9 @@ class ETDDF_Node:
             asset = self.red_agent_name
             ind = self.blue_agent_names.index(asset)
             x_hat_agent, P_agent = self.kf.get_agent_states(ind)
-            pose_cov = np.zeros((6,6))
             pose_cov[:3,:3] = P_agent[:3,:3]
-            pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
+            red_agent_depth = -0.7
+            pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],red_agent_depth), Quaternion(0,0,0,1))
             pose_cov[3:,3:] = -np.eye(3)
             pwc = PoseWithCovariance(pose, list(pose_cov.flatten()))
             twist_cov = -np.eye((6,6))
@@ -257,10 +262,13 @@ class ETDDF_Node:
                     modem_ori = meas.global_pose[3]
                 else:
                     modem_loc = self.force_modem_pose[:3]
-                    modem_ori = self.force_modem_pose[3]
+                    modem_ori = np.radians(self.force_modem_pose[3])
                 self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
 
-                meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
+                # meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
+                meas_index = len(self.update_times) - 8
+                if meas_index < 0:
+                    meas_index = 0
                 meas_indices.append(meas_index)
                 agent = meas.measured_asset
                 agent_id = self.blue_agent_names.index(agent)
