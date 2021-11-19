@@ -7,6 +7,7 @@
     <node name="associator_node" pkg="etddf_minau" type="associator_node.py" output="screen">
         <param name="enable_sonar_control" value="true" />
         <param name="time_to_drop" value="20" />
+        <param name="association_sigma" value="2" />
         <param name="lost_agent_unc" value="20" /> <!-- Std to consider an agent lost -->
         <param name="proto_track_points" value="3" /> <!-- Number of prototrack points to associator a lost agent -->
         <param name="red_agent_name" value="$(arg red_agent_name)" />

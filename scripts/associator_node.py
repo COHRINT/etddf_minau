@@ -43,6 +43,7 @@ class SonarAssociator:
         self.cuprint = CUPrint("{}/associator_node".format(self.my_name))
 
         # Associator Params
+        self.association_sigma = rospy.get_param("~association_sigma")
         time_to_drop = rospy.get_param("~time_to_drop")
         self.lost_agent_unc = rospy.get_param("~lost_agent_unc")
         proto_track_points = rospy.get_param("~proto_track_points")
@@ -187,7 +188,7 @@ class SonarAssociator:
             R = np.array( [[unc_x, 0],[0, unc_x]]) # TODO actual approximation with rotated covariance
             t = msg.header.stamp
 
-            agent = self.associator.associate(agent_dict, meas, R, t.secs, association_sigma=4)
+            agent = self.associator.associate(agent_dict, meas, R, t.secs, association_sigma=self.association_sigma)
             self.prototrack = self.associator.get_proto()
 
             # print("Sonar meas information")

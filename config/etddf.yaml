@@ -1,6 +1,6 @@
 is_deltatier: false
 use_strapdown: true
-correct_strapdown: false # will correct strapdown only if the position is known
+correct_strapdown: true # will correct strapdown only if the position is known
 strapdown_correction_period: 10 # how often to correct the strapdown filter
 fast_ci: false
 force_modem_pose: [0, -5, -1, 0] # empty for not forcing pose. x,y,z, yaw_degrees
@@ -13,9 +13,9 @@ sonar_az_start_et_delta: 0.0
 
 # Force measurement noise
 force_sonar_range_var: 0.3 # -1 for no forcing
-force_sonar_az_var: 0.3
-force_modem_range_var: 0.1
-force_modem_az_var: 0.2
+force_sonar_az_var: 0.03
+force_modem_range_var: 0.2
+force_modem_az_var: 0.05
 
 ### Process Noise Configurations ###
 position_process_noise: 0.1
