@@ -5,7 +5,7 @@
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
 
     <node name="associator_node" pkg="etddf_minau" type="associator_node.py" output="screen">
-        <param name="enable_sonar_control" value="false" />
+        <param name="enable_sonar_control" value="true" />
         <param name="time_to_drop" value="20" />
         <param name="lost_agent_unc" value="10" /> <!-- Std to consider an agent lost -->
         <param name="proto_track_points" value="3" /> <!-- Number of prototrack points to associator a lost agent -->

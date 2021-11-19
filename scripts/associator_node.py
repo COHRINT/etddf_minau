@@ -85,6 +85,7 @@ class SonarAssociator:
         # Sonar Controller Params
         self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
         if self.enable_sonar_control:
+            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
             self.ping_thresh = rospy.get_param("~ping_thresh")
             self.scan_angle = None
@@ -92,7 +93,6 @@ class SonarAssociator:
             rospy.Subscriber("ping360_node/sonar/scan_complete", UInt16, self.scan_angle_callback)
             self.cuprint("Waiting for scan to complete")
             rospy.wait_for_message( "ping360_node/sonar/scan_complete", UInt16 )
-            self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
 
         sonar_topic = "sonar_processing/target_list"
         rospy.Subscriber(sonar_topic, SonarTargetList, self.sonar_callback)
@@ -138,6 +138,8 @@ class SonarAssociator:
         # Construct agent_dict
         agent_dict = {}
         for a in self.agent_poses:
+            if "red" in a:
+                continue
             position = self.agent_poses[a].pose.position
             position = np.array([[position.x],[position.y],[position.z]])
             cov = np.reshape(self.agent_poses[a].covariance, (6,6))
