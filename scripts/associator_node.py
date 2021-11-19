@@ -86,7 +86,7 @@ class SonarAssociator:
 
         # Sonar Controller Params
         self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
-        rospy.Subscriber("associator/enable_scan_control", Bool, self.enable_sonar_control)
+        rospy.Subscriber("associator/enable_scan_control", Bool, self.enable_sonar_control_callback)
         if self.enable_sonar_control:
             self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
@@ -102,7 +102,7 @@ class SonarAssociator:
 
         self.cuprint("Loaded")
 
-    def enable_sonar_control(self, msg):
+    def enable_sonar_control_callback(self, msg):
         if msg.data:
             self.cuprint("Enabling sonar control")
         else:
