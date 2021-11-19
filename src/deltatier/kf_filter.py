@@ -835,7 +835,9 @@ class KalmanFilter:
         H[0, startx1 + 1] = dady
         
         innovation = normalize_angle( meas_value - pred )
-        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+        if abs(innovation) < np.radians(90):
+            print("azimuth innovation too large, rejecting: {}".format(innovation))
+            x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
 
         return x_hat, P
 
