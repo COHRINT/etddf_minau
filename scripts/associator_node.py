@@ -12,6 +12,7 @@ import numpy as np
 from std_msgs.msg import UInt16
 from deltatier.sonar_controller import scan_control
 from deltatier.normalize_angle import normalize_angle
+from std_msgs.msg import Bool
 
 """
 The architecture is a bit complex
@@ -85,6 +86,7 @@ class SonarAssociator:
 
         # Sonar Controller Params
         self.enable_sonar_control = rospy.get_param("~enable_sonar_control")
+        rospy.Subscriber("associator/enable_scan_control", Bool, self.enable_sonar_control)
         if self.enable_sonar_control:
             self.sonar_control_pub = rospy.Publisher("ping360_node/sonar/set_scan", SonarSettings, queue_size=10)
             self.scan_size_deg = rospy.get_param("~scan_size_deg")
@@ -99,6 +101,13 @@ class SonarAssociator:
         rospy.Subscriber(sonar_topic, SonarTargetList, self.sonar_callback)
 
         self.cuprint("Loaded")
+
+    def enable_sonar_control(self, msg):
+        if msg.data:
+            self.cuprint("Enabling sonar control")
+        else:
+            self.cuprint("Disabling sonar control")
+        self.enable_sonar_control = msg.data
     
     def scan_angle_callback(self, msg):
         last_scan_angle_rad = self._gradian2radian( msg.data )
