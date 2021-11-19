@@ -133,7 +133,7 @@ class SonarAssociator:
             scan_size_grad = (200 / np.pi) * np.radians(self.scan_size_deg)
             end_grad = int(np.mod( start_grad + scan_size_grad, 400 ))
 
-        print("New sonar configuration: {}".format([start_grad, end_grad]))
+        # print("New sonar configuration: {}".format([start_grad, end_grad]))
         self.sonar_control_pub.publish( SonarSettings(start_grad, end_grad) )
         
     def _get_agent_dict(self):
@@ -165,7 +165,7 @@ class SonarAssociator:
         self.agent_poses[agent_name] = msg.pose
 
     def sonar_callback(self, msg):
-        self.cuprint("Message received")
+        # self.cuprint("Message received")
 
         agent_dict = self._get_agent_dict().copy()
         my_pos = self.agent_poses[self.my_name].pose.position
@@ -181,7 +181,7 @@ class SonarAssociator:
             meas_x = st.range_m * np.cos(inertial_bearing)
             meas_y = st.range_m * np.sin(inertial_bearing)
             meas = np.array([[meas_x], [meas_y]])
-            self.cuprint("World coords: {}".format(meas.flatten()))
+            # self.cuprint("World coords: {}".format(meas.flatten()))
 
             bearing_std = np.sqrt( self.bearing_var )
             unc_x = ( st.range_m * bearing_std ) ** 2
@@ -204,6 +204,8 @@ class SonarAssociator:
                 st.bearing_variance = self.bearing_var
                 st.range_variance = self.range_var
                 new_msg.targets.append( st )
+            else:
+                self.cuprint("Unable to associate")
             
             self.scan_angle = st.bearing_rad
 

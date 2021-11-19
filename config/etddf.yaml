@@ -14,7 +14,7 @@ sonar_az_start_et_delta: 0.0
 # Force measurement noise
 force_sonar_range_var: 0.3 # -1 for no forcing
 force_sonar_az_var: 0.03
-force_modem_range_var: 0.2
+force_modem_range_var: 0.04
 force_modem_az_var: 0.05
 
 ### Process Noise Configurations ###

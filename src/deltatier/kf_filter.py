@@ -836,8 +836,9 @@ class KalmanFilter:
         
         innovation = normalize_angle( meas_value - pred )
         if abs(innovation) < np.radians(90):
-            print("azimuth innovation too large, rejecting: {}".format(innovation))
             x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+        else:
+            print("Modem azimuth innovation too large, rejecting: {}".format(innovation))
 
         return x_hat, P
 

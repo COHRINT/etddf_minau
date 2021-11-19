@@ -49,6 +49,7 @@ class ETDDF_Node:
 
         self.use_strapdown = rospy.get_param("~use_strapdown")
         self.do_correct_strapdown = rospy.get_param("~correct_strapdown")
+        self.correct_strapdown_next_seq = False
         self.position_process_noise = rospy.get_param("~position_process_noise")
         self.velocity_process_noise = rospy.get_param("~velocity_process_noise")
         self.fast_ci = rospy.get_param("~fast_ci")
@@ -103,7 +104,7 @@ class ETDDF_Node:
         self.cuprint("Loaded")
 
     def sonar_callback(self, msg):
-        self.cuprint("Receiving sonar meas")
+        # self.cuprint("Receiving sonar meas")
         collecting_agent_id = self.blue_agent_names.index(self.my_name)
         for st in msg.targets:
             collected_agent_id = self.blue_agent_names.index( st.id )
@@ -120,7 +121,7 @@ class ETDDF_Node:
 
             rounded_range_meas = round(range_meas, 1)
             rounded_azimuth_meas = round(np.degrees(azimuth_meas),1)
-            self.cuprint("{} r: {} az: {} (deg)".format(st.id, rounded_range_meas, rounded_azimuth_meas))
+            # self.cuprint("{} r: {} az: {} (deg)".format(st.id, rounded_range_meas, rounded_azimuth_meas))
 
             self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
             self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
@@ -170,6 +171,9 @@ class ETDDF_Node:
             if self.do_correct_strapdown and (self.update_seq % self.strapdown_correction_period == 0):
                 if x_nav is not None and P_nav is not None:
                     self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
+            elif self.correct_strapdown_next_seq:
+                self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
+                self.correct_strapdown_next_seq = False
 
         self.publish_estimates(t_now, last_orientation_quat, orientation_cov)
         self.last_update_time = t_now
@@ -263,10 +267,10 @@ class ETDDF_Node:
                 else:
                     modem_loc = self.force_modem_pose[:3]
                     modem_ori = np.radians(self.force_modem_pose[3])
-                self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
+                # self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
 
                 # meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
-                meas_index = len(self.update_times) - 8
+                meas_index = len(self.update_times) - 5
                 if meas_index < 0:
                     meas_index = 0
                 meas_indices.append(meas_index)
@@ -296,6 +300,7 @@ class ETDDF_Node:
                 min_index = min(meas_indices)
                 my_id = self.blue_agent_names.index(self.my_name)
                 self.kf.catch_up(min_index, modem_loc, self.position_process_noise, self.velocity_process_noise, my_id, fast_ci=False)
+                self.correct_strapdown_next_seq = True
 
         elif self.is_deltatier:
             raise NotImplementedError("DT is not supported yet")

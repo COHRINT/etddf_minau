@@ -130,7 +130,7 @@ class Associator:
             self.proto_track_naming_num += 1
             return "proto"
         else:
-            print("Can't associate detection with tracked agents and no search agents.")
+            # print("Can't associate detection with tracked agents and no search agents.")
             return "none"
 
     def clean_protos(self, t):
