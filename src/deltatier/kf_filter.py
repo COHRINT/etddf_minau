@@ -1015,6 +1015,9 @@ class KalmanFilter:
             remainder = agent_num - self.BLUE_NUM - self.RED_NUM
             return 6*(self.BLUE_NUM + self.RED_NUM) + 3*remainder
     
+    def get_agent_index_from_state(self, state):
+        return int( state / 6 )
+    
 
 if __name__ == "__main__":
     # Test scripts

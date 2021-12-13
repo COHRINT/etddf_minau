@@ -25,7 +25,7 @@ from geometry_msgs.msg import PoseWithCovariance, Pose, Point, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from minau.msg import SonarTargetList, SonarTarget
 from cuprint.cuprint import CUPrint
-from deltatier.kf_filter import KalmanFilter
+from deltatier.kf_filter import KalmanFilter, MEAS_TYPES_INDICES, MEAS_COLUMNS
 
 class ETDDF_Node:
 
@@ -353,11 +353,42 @@ class ETDDF_Node:
 
     def get_meas_pkg_callback(self, req):
         self.cuprint("pulling buffer")
-        self.update_lock.acquire()
-        delta, buffer = self.filter.pull_buffer()
-        self.update_lock.release()
-        mp = MeasurementPackage(buffer, buffer, self.my_name, delta)
-        self.cuprint("returning buffer")
+
+        mult, share_buffer, explicit_cnt, implicit_cnt = self.kf.pull_buffer(
+            self.delta_multipliers, 
+            self.delta_codebook_table, 
+            self.position_process_noise, 
+            self.velocity_process_noise, 
+            self.force_modem_pose[:3],
+            self.buffer_size)
+        print(mult)
+        print(share_buffer)
+        MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
+        MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
+
+        meas_list = []
+        for m in share_buffer:
+            meas_type = MEAS_TYPES_INDICES[ m[ MEAS_COLUMNS.index("type") ] ]
+            index = m[ MEAS_COLUMNS.index("index") ]
+            startx1 = m[ MEAS_COLUMNS.index("startx1") ]
+            startx2 = m[ MEAS_COLUMNS.index("startx2") ]
+            data  = m[ MEAS_COLUMNS.index("data") ]
+            R = m[ MEAS_COLUMNS.index("R") ]
+            x1_ind = self.kf.get_agent_index_from_state(startx1)
+            x2_ind = self.kf.get_agent_index_from_state(startx2)
+            agent1 = self.blue_agent_names[x1_ind]
+            if x2_ind == len(self.blue_agent_names): # red agent
+                agent2 = self.red_agent_name
+            else:
+                agent2 = self.blue_agent_names[x2_ind]
+            new_meas = Measurement(meas_type, index, agent1, agent2, data, R, [], 0.0)
+            meas_list.append(new_meas)
+
+        mp = MeasurementPackage()
+        mp.delta_multiplier = mult
+        mp.src_asset = self.my_name
+        mp.measurements = meas_list
+
         return mp
 
 if __name__ == "__main__":

@@ -26,9 +26,11 @@ def normalize_times(times):
 def plot_innovations(data):
 
     # Should loop through the keys in data in each subplot
-
+    colors = ["b", "r", "g"]
+    i=0
     for key in data:
         scenario_data = data[key]
+        color = colors[i]
 
         plt.suptitle("Modem Measurement Innovations")
 
@@ -38,8 +40,8 @@ def plot_innovations(data):
         innovations = np.abs( bluerov_data["range_inn"] )
         innovation_covs = 2*np.sqrt(bluerov_data["range_inn_cov"])
         times = normalize_times( bluerov_data["range_inn_t"] )
-        plt.plot(times, innovations, c="b", label="{}".format(key))
-        plt.plot(times, innovation_covs ,"--", c="b")#, label="{} Inn. Covariance ($2\sigma$)".format(key))
+        plt.plot(times, innovations, c=color, label="{}".format(key))
+        plt.plot(times, innovation_covs ,"--", c=color)#, label="{} Inn. Covariance ($2\sigma$)".format(key))
         plt.title("Agent 0")
         plt.legend()
         plt.ylabel("Range (Abs value)")
@@ -51,8 +53,8 @@ def plot_innovations(data):
         innovations = np.abs( bluerov_data["azimuth_inn"] )
         innovation_covs = 2*np.sqrt(bluerov_data["azimuth_inn_cov"])
         times = normalize_times( bluerov_data["range_inn_t"] )
-        plt.plot(times, innovations, c="b")
-        plt.plot(times, innovation_covs ,"--", c="b")
+        plt.plot(times, innovations, c=color)
+        plt.plot(times, innovation_covs ,"--", c=color)
         # plt.title("Modem Azimuth of Agent 0")
         plt.ylabel("Azimuth (Abs value)")
 
@@ -62,8 +64,13 @@ def plot_innovations(data):
         innovations = np.abs( bluerov_data["range_inn"] )
         innovation_covs = 2*np.sqrt(bluerov_data["range_inn_cov"])
         times = normalize_times( bluerov_data["range_inn_t"] )
-        plt.plot(times, innovations, c="b")
-        plt.plot(times, innovation_covs ,"--", c="b")
+        if i == 0:
+            plt.plot(times, innovations, c=color, label="Innovation")
+            plt.plot(times, innovation_covs ,"--", c=color, label="$2\sigma$ Innovation Unc.")
+            plt.legend()
+        else:
+            plt.plot(times, innovations, c=color)
+            plt.plot(times, innovation_covs ,"--", c=color)
         plt.title("Agent 1")
 
         # # BLUEROV2_5 AZIMUTH
@@ -72,9 +79,11 @@ def plot_innovations(data):
         innovations = np.abs( bluerov_data["azimuth_inn"] )
         innovation_covs = 2*np.sqrt(bluerov_data["azimuth_inn_cov"])
         times = normalize_times( bluerov_data["range_inn_t"] )
-        plt.plot(times, innovations, c="b")
-        plt.plot(times, innovation_covs ,"--", c="b")
+        plt.plot(times, innovations, c=color)
+        plt.plot(times, innovation_covs ,"--", c=color)
         # plt.title("Modem Azimuth of Agent 1")
+
+        i += 1
 
     plt.show()
 
@@ -227,5 +236,9 @@ def load_bag(bag):
 data = {}
 no_collab_bag = "no_collaboration.bag"
 data["No Collaboration"] = load_bag(no_collab_bag)
+omni_bag = "omniscient_bag.bag"
+# data["Omniscient Old"] = load_bag(omni_bag)
+omni_tuned_bag = "2021-12-13-11-36-47.bag"
+data["Omniscient"] = load_bag(omni_tuned_bag)
 
 plot_innovations(data)

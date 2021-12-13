@@ -1,4 +1,4 @@
-is_deltatier: false
+is_deltatier: true
 use_strapdown: true
 correct_strapdown: true # will correct strapdown only if the position is known
 strapdown_correction_period: 10 # how often to correct the strapdown filter
