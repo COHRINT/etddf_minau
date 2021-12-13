@@ -76,6 +76,27 @@ class ETDDF_Node:
         self.kf = KalmanFilter(blue_positions, [], self.red_agent_exists, self.is_deltatier, \
             known_posititon_unc=known_position_uncertainty,\
             unknown_agent_unc=unknown_position_uncertainty)
+        
+        # Initialize the kalman filter to the correct starting estimate
+        x_hat = np.array([3.89131562419, -1.81523517305, -0.609213583867, 0.0590610492218, -0.0123524654153, 0.00180473321339, \
+                                3.38198297047, 0.159090854054, -0.610862394329, 0.0366285762217, 0.00680334780657, -0.00342542529857])
+        blue7_pos_cov = [4.066656067779953, -1.5404561786027737, -6.516080657320234e-07, 0.0, 0.0, 0.0, -1.5404561786027724, 1.3353038668609196, -7.152718624737255e-06, 0.0, 0.0, 0.0, -6.516080657320111e-07, -7.15271862473727e-06, 0.008369161321799212, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.04041716405632286, -0.0005849874715729819, -5.589835383432124e-07, 0.0, 0.0, 0.0, -0.0005849874715729821, 0.0157834857305976, 2.1024579596438633e-08, 0.0, 0.0, 0.0, -5.589835383432123e-07, 2.1024579596438752e-08, 0.021678826527810384]
+        blue7_vel_cov = [0.006970526495199368, -0.0010569644397999919, -8.688092559903357e-09, -0.0, -0.0, -0.0, -0.0010569644397999875, 0.004757777386387238, -2.2034527050738752e-08, -0.0, -0.0, -0.0, -8.68809255990197e-09, -2.203452705074336e-08, 0.0034241466326507017, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0]
+        blue5_pos_cov = [3.026238619036268, -1.4324979041230894, -5.522027094957632e-06, 0.0, 0.0, 0.0, -1.43249790412309, 1.3819694062935084, -1.2752419419034878e-06, 0.0, 0.0, 0.0, -5.52202709495763e-06, -1.2752419419034922e-06, 0.009170215343487253, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, -0.0, -0.0, 0.0, 0.0, 0.0, -0.0, -1.0, -0.0, 0.0, 0.0, 0.0, -0.0, -0.0, -1.0]
+        blue5_vel_cov = [0.0008331419165405064, -5.9810235723929415e-05, -2.108120588498449e-10, -0.0, -0.0, -0.0, -5.981023572392958e-05, 0.0006655106386352285, -4.353339389205928e-11, -0.0, -0.0, -0.0, -2.1081205884969358e-10, -4.3533393891775726e-11, 0.0005561217229920902, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0]
+
+        blue7_pos_cov = np.reshape(blue7_pos_cov, (6,6))[:3,:3]
+        blue7_vel_cov = np.reshape(blue7_vel_cov, (6,6))[:3,:3]
+        blue5_pos_cov = np.reshape(blue5_pos_cov, (6,6))[:3,:3]
+        blue5_vel_cov = np.reshape(blue5_vel_cov, (6,6))[:3,:3]
+        cov = np.zeros((12,12))
+        cov[:3,:3] = blue7_pos_cov
+        cov[3:6,3:6] = blue7_vel_cov
+        cov[6:9,6:9] = blue5_pos_cov
+        cov[9:12,9:12] = blue5_vel_cov
+
+        self.kf.x_hat = np.reshape(x_hat, (-1,1))
+        self.kf.P = cov        
 
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
         self.asset_pub_dict = {}
@@ -88,6 +109,8 @@ class ETDDF_Node:
 
         # Modem & Measurement Packages
         rospy.Subscriber("etddf/packages_in", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
+
+        self.last_orientation_rad = None
 
         # Strapdown configuration
         self.update_seq = 0
@@ -104,6 +127,8 @@ class ETDDF_Node:
         self.cuprint("Loaded")
 
     def sonar_callback(self, msg):
+        if self.last_orientation_rad == None:
+            return
         # self.cuprint("Receiving sonar meas")
         collecting_agent_id = self.blue_agent_names.index(self.my_name)
         for st in msg.targets:
@@ -127,6 +152,17 @@ class ETDDF_Node:
             self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
 
     def nav_filter_callback(self, odom):
+
+        # Correct strapdown if first msg
+        if self.last_orientation_rad is None:
+            last_orientation_quat = odom.pose.pose.orientation
+            (r, p, y) = tf.transformations.euler_from_quaternion([last_orientation_quat.x, \
+                    last_orientation_quat.y, last_orientation_quat.z, last_orientation_quat.w])
+            self.last_orientation_rad = y
+            orientation_cov = np.array(odom.pose.covariance).reshape(6,6)
+            self.correct_strapdown(odom.header, self.kf.x_hat, self.kf.P, last_orientation_quat, orientation_cov)
+            return
+
         # Update at specified rate
         t_now = rospy.get_rostime()
         delta_t_ros =  t_now - self.last_update_time
@@ -272,7 +308,7 @@ class ETDDF_Node:
                 # meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
                 meas_index = len(self.update_times) - 5
                 if meas_index < 0:
-                    meas_index = 0
+                    meas_index = None
                 meas_indices.append(meas_index)
                 agent = meas.measured_asset
                 agent_id = self.blue_agent_names.index(agent)
@@ -296,7 +332,7 @@ class ETDDF_Node:
                     R = self.meas_variances["modem_range"]
                     self.kf.filter_range_from_untracked( meas.data - BIAS, R, modem_loc, agent_id, index=meas_index)
 
-            if meas_indices: # we received measurements
+            if meas_indices and meas_index != None: # we received measurements
                 min_index = min(meas_indices)
                 my_id = self.blue_agent_names.index(self.my_name)
                 self.kf.catch_up(min_index, modem_loc, self.position_process_noise, self.velocity_process_noise, my_id, fast_ci=False)
