@@ -339,8 +339,51 @@ class ETDDF_Node:
                 self.correct_strapdown_next_seq = True
 
         elif self.is_deltatier:
-            raise NotImplementedError("DT is not supported yet")
-            # self.cuprint("receiving buffer")
+            self.cuprint("receiving buffer")
+            # Now turn the measurent package into a ledger
+            MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
+            MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
+
+            R_az = self.meas_variances["sonar_az"]
+            R_range = self.meas_variances["sonar_range"]
+
+            blocks = []
+            current_index = self.kf.index
+            # Assume 0 transmission delay
+            for m in msg.measurements:
+                if "range" in m.meas_type:
+                    R = R_range
+                else:
+                    R = R_az
+                type_ind = MEAS_TYPES_INDICES.index(m.meas_type)
+                delta_index = int( (rospy.get_rostime() - m.stamp).to_sec() )
+                index = current_index - delta_index
+                agent1_id = self.blue_agent_names.index( m.src_asset )
+                if self.red_agent_exists and self.red_agent_name == m.measured_asset:
+                    agent2_id = len(self.blue_agent_names)
+                else:
+                    agent2_id = self.blue_agent_names.index( m.measured_asset )
+                startx1 = self.kf.get_agent_state_index(agent1_id)
+                startx2 = self.kf.get_agent_state_index(agent2_id)
+                if m.meas_type == "sonar_azimuth":
+                    data = np.radians(m.data)
+                else:
+                    data = m.data
+                block = meas_row = [type_ind, index, startx1, startx2, data, R]
+                blocks.append( block )
+
+            print(blocks)
+
+            self.kf.rx_buffer(
+                msg.delta_multiplier, 
+                blocks, 
+                self.delta_codebook_table, 
+                self.force_modem_pose[:3], 
+                self.position_process_noise, 
+                self.velocity_process_noise, 
+                self.blue_agent_names.index( self.my_name )
+            )
+
             # # Loop through buffer and see if we've found the red agent
             # for i in range(len(msg.measurements)):
             #     if msg.measurements[i].measured_asset in self.red_asset_names and not self.red_asset_found:
@@ -360,20 +403,23 @@ class ETDDF_Node:
             self.position_process_noise, 
             self.velocity_process_noise, 
             self.force_modem_pose[:3],
-            self.buffer_size)
-        print(mult)
-        print(share_buffer)
-        MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
-        MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
+            self.buffer_size)    
+        print(share_buffer)    
 
+        current_index = self.kf.index
+        current_time = rospy.get_rostime()
         meas_list = []
         for m in share_buffer:
             meas_type = MEAS_TYPES_INDICES[ m[ MEAS_COLUMNS.index("type") ] ]
+
             index = m[ MEAS_COLUMNS.index("index") ]
+            index_delta = current_index - index
+            past_time = current_time - rospy.Duration(index_delta) # each index corresponds to 1s
             startx1 = m[ MEAS_COLUMNS.index("startx1") ]
             startx2 = m[ MEAS_COLUMNS.index("startx2") ]
             data  = m[ MEAS_COLUMNS.index("data") ]
-            R = m[ MEAS_COLUMNS.index("R") ]
+            if meas_type == "sonar_azimuth":
+                data = np.degrees(data)
             x1_ind = self.kf.get_agent_index_from_state(startx1)
             x2_ind = self.kf.get_agent_index_from_state(startx2)
             agent1 = self.blue_agent_names[x1_ind]
@@ -381,7 +427,7 @@ class ETDDF_Node:
                 agent2 = self.red_agent_name
             else:
                 agent2 = self.blue_agent_names[x2_ind]
-            new_meas = Measurement(meas_type, index, agent1, agent2, data, R, [], 0.0)
+            new_meas = Measurement(meas_type, past_time, agent1, agent2, data, -1.0, [], 0.0)
             meas_list.append(new_meas)
 
         mp = MeasurementPackage()

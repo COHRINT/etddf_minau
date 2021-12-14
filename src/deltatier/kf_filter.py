@@ -45,8 +45,8 @@ UNKNOWN_AGENT_UNCERTAINTY = 1e6 # Red and blue agents with unknown starting loca
 MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
 MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
 
-IMPLICIT_BYTE_COST = 0.0
-EXPLICIT_BYTE_COST = 1.5
+IMPLICIT_BYTE_COST = 1.0
+EXPLICIT_BYTE_COST = 2.0
 
 EIGHT_STATE_NAV_FILTER = False # else 6 states
 
@@ -139,7 +139,7 @@ class KalmanFilter:
         """
         ids = []
         for a in range(self.BLUE_NUM + self.RED_NUM + self.LANDMARK_NUM):
-            ids.append( self._get_agent_state_index( a ) )
+            ids.append( self.get_agent_state_index( a ) )
         return ids
 
 
@@ -162,8 +162,8 @@ class KalmanFilter:
 
     # Either to an agent or landmark
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
-        startx1 = self._get_agent_state_index(collecting_agent)
-        startx2 = self._get_agent_state_index(collected_agent)
+        startx1 = self.get_agent_state_index(collecting_agent)
+        startx2 = self.get_agent_state_index(collected_agent)
         self.x_hat, self.P = KalmanFilter._fuse_range_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
@@ -176,8 +176,8 @@ class KalmanFilter:
         """
         Meas value must be relative to x-axis because of linear filter
         """
-        startx1 = self._get_agent_state_index(collecting_agent)
-        startx2 = self._get_agent_state_index(collected_agent)
+        startx1 = self.get_agent_state_index(collecting_agent)
+        startx2 = self.get_agent_state_index(collected_agent)
         self.x_hat, self.P = KalmanFilter._fuse_azimuth_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
 
         # Add to ledger
@@ -190,7 +190,7 @@ class KalmanFilter:
         """
         For OOSM problem, add index to be fused at
         """
-        startx1 = self._get_agent_state_index(collected_agent)
+        startx1 = self.get_agent_state_index(collected_agent)
 
         # Fuse measurement now if not OOSM
         if index is None or index == self.index:
@@ -210,7 +210,7 @@ class KalmanFilter:
         Meas value must be relative to x-axis because of linear filter
         For OOSM problem, add index to be fused at
         """
-        startx1 = self._get_agent_state_index(collected_agent)
+        startx1 = self.get_agent_state_index(collected_agent)
 
         # Fuse measurement now if not OOSM
         if index is None or index == self.index:
@@ -1008,7 +1008,7 @@ class KalmanFilter:
         c_bar = Pcc.dot( omega_optimal*Pa_inv.dot(xa) + (1-omega_optimal)*Pb_inv.dot(xb))
         return c_bar.reshape(-1,1), Pcc
 
-    def _get_agent_state_index(self, agent_num):
+    def get_agent_state_index(self, agent_num):
         if agent_num < self.BLUE_NUM + self.RED_NUM:
             return 6*agent_num
         else: # landmark
