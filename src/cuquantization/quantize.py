@@ -56,7 +56,6 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, max_latency, packet_size=32):
             raise ValueError(meas.meas_type + " not in supported types: " + str(HEADERS.keys()))
         header = HEADERS[meas.meas_type]
         header2 = asset_landmark_dict[meas.measured_asset]
-        print(header2)
         timestamp = (present_time - meas.stamp).to_sec()
         time_bin = int( timestamp / time_per_bin )
         if time_bin > 3:
@@ -99,6 +98,8 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, max_latency, packet_size=32):
         # byte_string.append(timestamp)
         if data_bin is not None:
             byte_string.append(data_bin)
+
+    print("Packet Cost: {}".format(len(byte_string)))
 
     if len(byte_string) > packet_size:
         raise ValueError("Compression failed. Byte string {} is greater than packet size {} with meas count {}".format(len(byte_string), packet_size, len(meas_pkg.measurements)))
@@ -152,31 +153,30 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, max_latency,
         meas_type = HEADERS.keys()[HEADERS.values().index( main_header )]
         if meas_type == "empty":
             break
-        print(header2)
         measured_agent = asset_landmark_dict.keys()[asset_landmark_dict.values().index( header2 )]
-        print(measured_agent)
         past_time = time_bin * time_per_bin
         timestamp = rospy.Time( (present_time.secs - transmission_time) - past_time )
 
-        index += 1
-
-        data_bin = byte_arr[index]
         data = 0
+        if "implicit" not in meas_type:
+            index += 1
 
-        if meas_type == "sonar_range":
-            unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
-            data = data_bin * unit_per_bin
-        elif meas_type == "sonar_azimuth":
-            unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
-            data = data_bin * unit_per_bin
-            data = np.mod( data + 180, 360) - 180 # -180 to 180
-        elif meas_type == "modem_range":
-            unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
-            data = data_bin * unit_per_bin
-        elif meas_type == "modem_azimuth":
-            unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
-            data = data_bin * unit_per_bin
-            data = np.mod( data + 180, 360) - 180 # -180 to 180
+            data_bin = byte_arr[index]
+
+            if meas_type == "sonar_range":
+                unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
+                data = data_bin * unit_per_bin
+            elif meas_type == "sonar_azimuth":
+                unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
+                data = data_bin * unit_per_bin
+                data = np.mod( data + 180, 360) - 180 # -180 to 180
+            elif meas_type == "modem_range":
+                unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
+                data = data_bin * unit_per_bin
+            elif meas_type == "modem_azimuth":
+                unit_per_bin = float(MEAS_MAX_VALUES[meas_type]) / 255.0
+                data = data_bin * unit_per_bin
+                data = np.mod( data + 180, 360) - 180 # -180 to 180
         
         m = Measurement(meas_type, timestamp, mp.src_asset, measured_agent, data, 0.0, [], 0.0)
         mp.measurements.append(m)
