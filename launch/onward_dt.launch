@@ -7,6 +7,18 @@ for each agent
 - strapdown 
 -->
 
+  <!-- <include file="$(find minau)/launch/vehicle.filter.launch">
+    <arg name="asset_id" value="7"/>
+    <arg name="blue_team_names" value="[bluerov2_7, bluerov2_5, red1, red3]" />
+    <arg name="blue_team_positions_enu" value= "[[0.1,0.1,0.1],[],[5.8,-1.8,-0.1],[5.8,1.8,-0.1]]" />
+  </include>
+
+  <include file="$(find minau)/launch/vehicle.filter.launch">
+    <arg name="asset_id" value="5"/>
+    <arg name="blue_team_names" value="[bluerov2_7, bluerov2_5, red1, red3]" />
+    <arg name="blue_team_positions_enu" value= "[[],[0.1,0.1,0.1],[5.8,-1.8,-0.1],[5.8,1.8,-0.1]]" />
+  </include> -->
+
   <include file="$(find minau)/launch/vehicle.filter.launch">
     <arg name="asset_id" value="7"/>
     <arg name="blue_team_names" value="[bluerov2_7, bluerov2_5]" />

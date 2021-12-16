@@ -20,7 +20,7 @@ import numpy as np
 import tf
 np.set_printoptions(suppress=True)
 from copy import deepcopy
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Int64
 from geometry_msgs.msg import PoseWithCovariance, Pose, Point, Quaternion, Twist, Vector3, TwistWithCovariance, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from minau.msg import SonarTargetList, SonarTarget
@@ -69,6 +69,10 @@ class ETDDF_Node:
             self.delta_codebook_table = {"sonar_range" : rospy.get_param("~sonar_range_start_et_delta"),
                                          "sonar_azimuth" : rospy.get_param("~sonar_az_start_et_delta")}
             self.buffer_size = rospy.get_param("~buffer_space")
+            self.delta_mult_pub = rospy.Publisher("etddf/delta_multiplier", Int64, queue_size=10)
+            self.explicit_cnt = 0
+            self.implicit_cnt = 0
+            self.total_meas = 0
 
         if self.is_deltatier:
             rospy.Service('etddf/get_measurement_package', GetMeasurementPackage, self.get_meas_pkg_callback)
@@ -95,8 +99,8 @@ class ETDDF_Node:
         cov[6:9,6:9] = blue5_pos_cov
         cov[9:12,9:12] = blue5_vel_cov
 
-        self.kf.x_hat = np.reshape(x_hat, (-1,1))
-        self.kf.P = cov        
+        self.kf.x_hat[:12,0] = x_hat #np.reshape(x_hat, (-1,1))
+        self.kf.P[:12,:12] = cov
 
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
         self.asset_pub_dict = {}
@@ -109,6 +113,7 @@ class ETDDF_Node:
 
         # Modem & Measurement Packages
         rospy.Subscriber("etddf/packages_in", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
+        rospy.Subscriber("etddf/packages_in2", MeasurementPackage, self.meas_pkg_callback, queue_size=1)
 
         self.last_orientation_rad = None
 
@@ -150,6 +155,7 @@ class ETDDF_Node:
 
             self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
             self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
+            self.total_meas += 2
 
     def nav_filter_callback(self, odom):
 
@@ -207,7 +213,7 @@ class ETDDF_Node:
             if self.do_correct_strapdown and (self.update_seq % self.strapdown_correction_period == 0):
                 if x_nav is not None and P_nav is not None:
                     self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
-            elif self.correct_strapdown_next_seq:
+            elif self.correct_strapdown_next_seq: # THIS ACTUALLY FUSES WITH THE STRAPDOWN FILTER AFTER THE MODEM UPDATE BEFORE RESETING
                 self.correct_strapdown(odom.header, x_nav, P_nav, last_orientation_quat, orientation_cov)
                 self.correct_strapdown_next_seq = False
 
@@ -243,11 +249,11 @@ class ETDDF_Node:
             if asset == self.my_name:
                 pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]),last_orientation_quat)
                 pose_cov[3:,3:] = orientation_cov[3:,3:]
-            elif "red" in asset:
-                pose_cov = 5*np.eye(6) # Just set single uncertainty
-                red_agent_depth = -0.7
-                pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],red_agent_depth), Quaternion(0,0,0,1))
-                pose_cov[3:,3:] = -np.eye(3)
+            # elif "red" in asset:
+            #     pose_cov = 5*np.eye(6) # Just set single uncertainty
+            #     red_agent_depth = -0.7
+            #     pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],red_agent_depth), Quaternion(0,0,0,1))
+            #     pose_cov[3:,3:] = -np.eye(3)
             else:
                 pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
                 pose_cov[3:,3:] = -np.eye(3)
@@ -332,11 +338,20 @@ class ETDDF_Node:
                     R = self.meas_variances["modem_range"]
                     self.kf.filter_range_from_untracked( meas.data - BIAS, R, modem_loc, agent_id, index=meas_index)
 
+            
             if meas_indices and meas_index != None: # we received measurements
                 min_index = min(meas_indices)
                 my_id = self.blue_agent_names.index(self.my_name)
+
+                x_hat_prior = deepcopy(self.kf.x_hat)[:12]
+
                 self.kf.catch_up(min_index, modem_loc, self.position_process_noise, self.velocity_process_noise, my_id, fast_ci=False)
                 self.correct_strapdown_next_seq = True
+
+                x_hat_post = deepcopy(self.kf.x_hat)[:12]
+                delta = x_hat_post - x_hat_prior
+                if abs(delta[1]) > 4 or abs(delta[7]) > 4:
+                    raise ValueError("JUMP IN Y IN CATCH UP!")
 
         elif self.is_deltatier:
             self.cuprint("receiving buffer")
@@ -372,7 +387,10 @@ class ETDDF_Node:
                 block = meas_row = [type_ind, index, startx1, startx2, data, R]
                 blocks.append( block )
 
-            print(blocks)
+            # print(blocks)
+
+            # Check for difference in first 2 agents
+            x_hat_prior = deepcopy(self.kf.x_hat)[:12]
 
             self.kf.rx_buffer(
                 msg.delta_multiplier, 
@@ -383,6 +401,11 @@ class ETDDF_Node:
                 self.velocity_process_noise, 
                 self.blue_agent_names.index( self.my_name )
             )
+            x_hat_post = deepcopy(self.kf.x_hat)[:12]
+
+            delta = x_hat_post - x_hat_prior
+            if abs(delta[1]) > 4 or abs(delta[7]) > 4:
+                raise ValueError("JUMP IN Y IN RX BUFFER!")
 
             # # Loop through buffer and see if we've found the red agent
             # for i in range(len(msg.measurements)):
@@ -403,14 +426,20 @@ class ETDDF_Node:
             self.position_process_noise, 
             self.velocity_process_noise, 
             self.force_modem_pose[:3],
-            self.buffer_size)    
-        print(share_buffer)    
+            self.buffer_size) 
+        self.explicit_cnt += explicit_cnt
+        self.implicit_cnt += implicit_cnt   
+        # print(share_buffer)    
+        self.cuprint("Selecting {} multiplier. Totals: {} explicit | {} implicit | {} total".format(mult, self.explicit_cnt, self.implicit_cnt, self.total_meas))
+        self.delta_mult_pub.publish(Int64(mult))
 
         current_index = self.kf.index
         current_time = rospy.get_rostime()
         meas_list = []
+        meas_types = []
         for m in share_buffer:
             meas_type = MEAS_TYPES_INDICES[ m[ MEAS_COLUMNS.index("type") ] ]
+            meas_types.append( meas_type )
 
             index = m[ MEAS_COLUMNS.index("index") ]
             index_delta = current_index - index
@@ -430,6 +459,7 @@ class ETDDF_Node:
             new_meas = Measurement(meas_type, past_time, agent1, agent2, data, -1.0, [], 0.0)
             meas_list.append(new_meas)
 
+        print(meas_types)
         mp = MeasurementPackage()
         mp.delta_multiplier = mult
         mp.src_asset = self.my_name

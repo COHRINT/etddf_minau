@@ -4,6 +4,7 @@ from copy import deepcopy
 import tf
 import rospy
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseStamped
 from minau.msg import SonarTargetList, SonarTarget
 from ping360_sonar.msg import SonarSettings
 from cuprint.cuprint import CUPrint
@@ -55,11 +56,24 @@ class SonarAssociator:
         self.bearing_var = rospy.get_param("~force_sonar_az_var")
         self.range_var = rospy.get_param("~force_sonar_range_var")
 
+        self.debug = rospy.get_param("~debug")
+        if self.debug:
+
+            # To be viewed in RVIZ if a detection is getting associated
+            self.debug_det_pub = rospy.Publisher("associator/detections", PoseStamped, queue_size=1)
+            self.debug_ass_pub = rospy.Publisher("associator/associations", PoseStamped, queue_size=1)
+
+            self.num_meas = 0
+            self.num_ass = 0
+
+
         # Subscribe to all blue team poses
         blue_team = rospy.get_param("~blue_team_names")
         self.agent_poses = {}
         for b in blue_team:
             if b == "surface":
+                continue
+            if "red" in b:
                 continue
             rospy.Subscriber("etddf/estimate/" + b, Odometry, self.blue_team_callback, callback_args=b)
 
@@ -185,12 +199,23 @@ class SonarAssociator:
         new_msg.targets = []
         for st in msg.targets:
             inertial_bearing = st.bearing_rad + self.orientation_rad
-            self.cuprint("Associating r: {} az: {}".format(round(st.range_m,1), round(np.degrees(inertial_bearing),1)))
+            # self.cuprint("Associating r: {} az: {}".format(round(st.range_m,1), round(np.degrees(inertial_bearing),1)))
 
-            meas_x = st.range_m * np.cos(inertial_bearing)
-            meas_y = st.range_m * np.sin(inertial_bearing)
+            meas_x = st.range_m * np.cos(inertial_bearing) + my_pos.x
+            meas_y = st.range_m * np.sin(inertial_bearing) + my_pos.y
             meas = np.array([[meas_x], [meas_y]])
             # self.cuprint("World coords: {}".format(meas.flatten()))
+
+            if self.debug:
+                debug_ps = PoseStamped()
+                debug_ps.header.stamp = rospy.get_rostime()
+                debug_ps.header.frame_id = "odom"
+                debug_ps.pose.position.x = meas_x
+                debug_ps.pose.position.y = meas_y
+                debug_ps.pose.orientation.w = 1.0
+                self.debug_det_pub.publish(debug_ps)
+                self.num_meas += 1
+                
 
             bearing_std = np.sqrt( self.bearing_var )
             unc_x = ( st.range_m * bearing_std ) ** 2
@@ -207,12 +232,16 @@ class SonarAssociator:
             # print(agent_dict)
 
             if agent != "none" and agent != "proto":
-                self.cuprint("Meas associated: {}".format(agent))
+                # self.cuprint("Meas associated: {}".format(agent))
                 st.associated = True
                 st.id = agent
                 st.bearing_variance = self.bearing_var
                 st.range_variance = self.range_var
                 new_msg.targets.append( st )
+                if self.debug:
+                    self.debug_ass_pub.publish(debug_ps)
+                    self.num_ass += 1
+                    self.cuprint("[ {} / {} ] Associated".format(self.num_ass, self.num_meas))
             else:
                 self.cuprint("Unable to associate")
             

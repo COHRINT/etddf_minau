@@ -8,14 +8,14 @@ force_modem_pose: [0, -5, -1, 10] # empty for not forcing pose. x,y,z, yaw_degre
 ### Buffer space configurations ###
 delta_tiers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 buffer_space: 29
-sonar_range_start_et_delta: 0.0
-sonar_az_start_et_delta: 0.0
+sonar_range_start_et_delta: 0.2
+sonar_az_start_et_delta: 0.05
 
 # Force measurement noise
 force_sonar_range_var: 0.3 # -1 for no forcing
-force_sonar_az_var: 0.03
-force_modem_range_var: 0.04
-force_modem_az_var: 0.05
+force_sonar_az_var: 0.1
+force_modem_range_var: 0.3 # 0.5 std
+force_modem_az_var: 0.1 # 20 deg std
 
 ### Process Noise Configurations ###
 position_process_noise: 0.1

@@ -6,6 +6,8 @@ We want to open the bag and plot the innovations at the time they happened with 
 We also have range and azimuth! Maybe just for a single agent...
 We'll do 2x2 subplot, plot the innovations at the correct time along with the measurement covariance
 """
+from threading import Condition
+from numpy.core.numeric import load
 import rosbag
 import numpy as np
 from numpy.linalg import norm
@@ -206,9 +208,15 @@ def load_bag(bag):
         elif "packages_in" in topic:
             last_meas = msg
             last_meas_t = t
+        else:
+            continue
+
+        
 
         # Save to right place
         if last_estimate_t is not None and last_meas is not None: 
+            if "network" in topic:
+                continue
 
             # loop through the packet
             for m in msg.measurements:
@@ -238,7 +246,8 @@ no_collab_bag = "no_collaboration.bag"
 data["No Collaboration"] = load_bag(no_collab_bag)
 omni_bag = "omniscient_bag.bag"
 # data["Omniscient Old"] = load_bag(omni_bag)
-omni_tuned_bag = "2021-12-13-11-36-47.bag"
+omni_tuned_bag = "omniscient_bag.bag"
 data["Omniscient"] = load_bag(omni_tuned_bag)
+data["DeltaTier"] = load_bag("latest_deltatier.bag")
 
 plot_innovations(data)

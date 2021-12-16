@@ -45,8 +45,8 @@ UNKNOWN_AGENT_UNCERTAINTY = 1e6 # Red and blue agents with unknown starting loca
 MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
 MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
 
-IMPLICIT_BYTE_COST = 1.0
-EXPLICIT_BYTE_COST = 2.0
+IMPLICIT_BYTE_COST = 2.0
+EXPLICIT_BYTE_COST = 3.0
 
 EIGHT_STATE_NAV_FILTER = False # else 6 states
 
@@ -229,6 +229,7 @@ class KalmanFilter:
         mults : list of floats/ints
         delta_dict : dict{"meas_type" -> base_delta }
         """
+        original_mults = deepcopy(mults)
         middle_index = int( len(mults) / 2 )
         mult = mults[ middle_index ]
 
@@ -337,9 +338,19 @@ class KalmanFilter:
             # Check if share_buffer overflowed
             share_buffer_mat = KalmanFilter._get_ledger_mat(share_buffer)
             cost, explicit_cnt, implicit_cnt = self._get_buffer_size( share_buffer_mat )
+            total_cnt = explicit_cnt + implicit_cnt
             if cost > buffer_size:
                 if len(mults) == 1: # There were no matches!
-                    raise Exception("There were no matching deltatiers!")
+                    print("\033[91mThere were no matching deltatiers! Tried to compress {} meas over times [{}-{}]. Final: {} implicit {} explicit\033[0m".format(total_cnt, self.last_share_index, self.index, implicit_cnt, explicit_cnt))
+                    new_last_share = int( (self.index+1 - self.last_share_index) / 4) + self.last_share_index
+                    print("Cutting share time: [{}-{}] -> [{}-{}]".format(self.last_share_index, self.index, new_last_share, self.index))
+                    self.last_share_index = new_last_share
+                    mults = deepcopy(original_mults)
+                    middle_index = int( len(mults) / 2 )
+                    mult = mults[ middle_index ]
+                    if self.last_share_index == self.index:
+                        raise Exception("Giving up")
+                    continue
                 mults = mults[middle_index+1:]
             else:
                 if len(mults) == 1: # We've found our multiplier!
@@ -501,6 +512,12 @@ class KalmanFilter:
                         x_hat, P, startx1, startx2, data, R)
                 else:
                     raise ValueError("Unrecognized measurement type: " + str(meas_type))
+
+            # DEBUG CHECK FOR JUMPS
+            x_hat_before = deepcopy(self.x_hat_history_prior[index])
+            delta = x_hat - x_hat_before
+            if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
+                print("\033[91mJUMP ON MEAS PLAYBACK\033[0m")
             
             # Intersect with navigation filter
             if len(self.x_nav_history_prior) > index:
@@ -543,6 +560,11 @@ class KalmanFilter:
                 x_hat = np.dot(P_new, np.dot( inv(P), x_hat) + D_inv_d_zeros )
                 P = P_new
 
+            # DEBUG CHECK FOR JUMPS
+            x_hat_before = deepcopy(self.x_hat_history_prior[index])
+            delta = x_hat - x_hat_before
+            if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
+                print("\033[91mJUMP ON CI\033[0m")
         # end for index
         self.x_hat = x_hat
         self.P = P
@@ -629,7 +651,7 @@ class KalmanFilter:
 
         self.x_hat = x_hat
         self.P = P
-
+        
     def intersect_strapdown(self, x_nav, P_nav, agent, fast_ci=False, share_depth=True):
         """
         share_depth: take the depth estimate from x_nav and filter it as part of every agent
@@ -809,7 +831,10 @@ class KalmanFilter:
         H[0, startx1+2] = drdz1
 
         innovation = meas_value - pred
-        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+        if innovation > 3.0:
+            print("\033[93mLARGE RANGE INNOVATION -- SKIPPING: {}\033[0m".format(innovation))
+        else:
+            x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
 
         return x_hat, P
 
@@ -835,10 +860,13 @@ class KalmanFilter:
         H[0, startx1 + 1] = dady
         
         innovation = normalize_angle( meas_value - pred )
-        if abs(innovation) < np.radians(90):
+        if abs(innovation) < np.radians(30):
             x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
         else:
-            print("Modem azimuth innovation too large, rejecting: {}".format(innovation))
+            print("\033[93mModem azimuth innovation too large, rejecting: {} from {}\033[0m".format(innovation, np.degrees(meas_value)))
+            print("{} {}={}".format(meas_value, pred, innovation))
+            print([x1, x2, y1, y2])
+            print(delta_pred)
 
         return x_hat, P
 

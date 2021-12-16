@@ -56,10 +56,8 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, max_latency, packet_size=32):
             raise ValueError(meas.meas_type + " not in supported types: " + str(HEADERS.keys()))
         header = HEADERS[meas.meas_type]
         header2 = asset_landmark_dict[meas.measured_asset]
-        timestamp = (present_time - meas.stamp).to_sec()
-        time_bin = int( timestamp / time_per_bin )
-        if time_bin > 3:
-            time_bin = 3
+        timestamp = int( (present_time - meas.stamp).to_sec() )
+        assert timestamp < 255
 
         data_bin = 0
 
@@ -93,9 +91,9 @@ def measPkg2Bytes(meas_pkg, asset_landmark_dict, max_latency, packet_size=32):
             data_bin = None
 
         # Append to bytestring
-        full_header = header << 5 | header2 << 2 | time_bin
+        full_header = header << 5 | header2 << 2
         byte_string.append(full_header)
-        # byte_string.append(timestamp)
+        byte_string.append(timestamp)
         if data_bin is not None:
             byte_string.append(data_bin)
 
@@ -139,7 +137,7 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, max_latency,
     mp.src_asset = asset_landmark_dict.keys()[asset_landmark_dict.values().index( src_asset_code )]
     mp.delta_multiplier = primary_header >> 3
 
-    time_per_bin = max_latency / 2**2 # 2 bits for the timestamp
+    # time_per_bin = max_latency / 2**2 # 2 bits for the timestamp
 
     index = 1
     present_time = rospy.get_rostime()
@@ -149,12 +147,14 @@ def bytes2MeasPkg(byte_arr, transmission_time, asset_landmark_dict, max_latency,
         # full_header = header << 5 | header2 << 2 | time_bin
         main_header = header >> 5
         header2 = (header & 0x1c) >> 2
-        time_bin = header & 3
+        index += 1
+        past_time = byte_arr[index]
+        # time_bin = header & 3
         meas_type = HEADERS.keys()[HEADERS.values().index( main_header )]
         if meas_type == "empty":
             break
         measured_agent = asset_landmark_dict.keys()[asset_landmark_dict.values().index( header2 )]
-        past_time = time_bin * time_per_bin
+        # past_time = time_bin * time_per_bin
         timestamp = rospy.Time( (present_time.secs - transmission_time) - past_time )
 
         data = 0
@@ -218,14 +218,14 @@ if __name__ == "__main__":
     mp.src_asset = "surface"
     mp.delta_multiplier = 1.0
     t = rospy.get_rostime()
-    # m = Measurement("modem_range", t, mp.src_asset, "dory", 3.65, 0.5, global_pose, 0.0)
-    # m2 = Measurement("modem_azimuth", t, mp.src_asset, "dory", -65.72, 0.5, global_pose, 0.0)
+    m = Measurement("modem_range", t, mp.src_asset, "dory", 3.65, 0.5, global_pose, 0.0)
+    m2 = Measurement("modem_azimuth", t, mp.src_asset, "dory", -65.72, 0.5, global_pose, 0.0)
     m3 = Measurement("modem_range", t-rospy.Duration(5), mp.src_asset, "guppy", 7.8, 0.5, global_pose, 0.0)
-    # m4 = Measurement("modem_azimuth", t-rospy.Duration(5), mp.src_asset, "guppy", 23.0, 0.5, global_pose, 0.0)
-    # mp.measurements.append(m)
-    # mp.measurements.append(m2)
+    m4 = Measurement("modem_azimuth", t-rospy.Duration(5), mp.src_asset, "guppy", 23.0, 0.5, global_pose, 0.0)
+    mp.measurements.append(m)
+    mp.measurements.append(m2)
     mp.measurements.append(m3)
-    # mp.measurements.append(m4)
+    mp.measurements.append(m4)
 
     
     num_bytes_buffer = 29

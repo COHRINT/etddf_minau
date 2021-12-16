@@ -3,16 +3,18 @@
     <arg name="blue_team_names" default="[bluerov2_5, bluerov2_7]" />
     <arg name="red_agent_name" default="" />
     <arg name="config_file" default="$(find etddf_minau)/config/etddf.yaml" />
+    <arg name="debug" value="True" /> <!-- Whether to print status & publish debug association poses -->
 
     <node name="associator_node" pkg="etddf_minau" type="associator_node.py" output="screen">
         <param name="enable_sonar_control" value="false" />
         <param name="time_to_drop" value="20" />
-        <param name="association_sigma" value="3" />
+        <param name="association_sigma" value="2" />
         <param name="lost_agent_unc" value="20" /> <!-- Std to consider an agent lost -->
         <param name="proto_track_points" value="3" /> <!-- Number of prototrack points to associator a lost agent -->
         <param name="red_agent_name" value="$(arg red_agent_name)" />
         <param name="bearing_var" value="0.1"/> <!-- 15 deg std -->
         <param name="range_var" value="0.1"/> <!-- 0.3m std -->
+        <param name="debug" value="$(arg debug)" /> 
 
         <param name="scan_size_deg" value="90"/> <!-- scan size in degrees. Used when pinging an agent -->
         <param name="ping_thresh" value="1"/> <!-- std to ping an agent -->
