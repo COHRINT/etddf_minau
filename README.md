@@ -23,6 +23,7 @@ While both the sonar control node and associator have their own source files, th
 ### Associator Logic
 The associator first calculates the detection's global position using the relative range and bearing measurement transformed by ET-DDF's pose of the onboard vehicle. The logic
 
+![alt text](https://github.com/COHRINT/etddf_minau/blob/master/AssociatorLogic.png?raw=true)
 
 It rejects or associates this detection using ET-DDF's estimate of all agents. If the detection posititon does not fall within the 2-sigma uncertainty bounds of an agent, the detecion is discarded. 
 
