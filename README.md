@@ -1,5 +1,7 @@
 # etddf_minau
 
+This repo contains CU Boulder's filtering solution to the MinAu project. The et-ddf node is the primary filtering solution node but included in this repo are also an association node and a sonar control node. The function of all of these nodes are described below.
+
 ## Setup
 ```
 git submodule init
@@ -7,7 +9,18 @@ git submodule update
 ```
 
 ## ET-DDF Node
-TBD
+The primary filtering solution node. It is this job's node to provide estimates (means and covariances) of all tracked quantities. The name is somewhat of a misnomer because the filtering solution doesn't actually do "DDF" (Distributed Data Fusion), just "ET" (Event-Triggering). 
+
+### Functionality
+This node's theoretical functionality (the DeltaTier algorithm) is described in [this paper](https://drive.google.com/file/d/1nSslfkytGxTQvBNfssFxo53TezaEpmbx/view?usp=sharing) submitted to ACC 2022. 
+
+### Interfaces
+The et-ddf node exposes two types of topics to gain access to measurements.
+* "etddf/estimate/network" contains all estimates (nav_msgs/Odometry.msg) in a single topic.
+* "etddf/estimate/$agent" is the estimate topic for a specific agent.
+
+### Inputs
+THe DeltaTier filtering solution receives ownship information (measurements of the onboard vehicle) through the robot_localization (RL) package. 
 
 ## Sonar Control Node & Associator
 The sonar control node is responsible for modifying the ping360 sonar scan for the purposes of tracking or searching for an agent. The associator node is responsible for associating a detection with an agent. 
