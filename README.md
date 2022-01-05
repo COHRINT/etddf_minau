@@ -9,10 +9,14 @@ git submodule update
 ```
 
 ## ET-DDF Node
-The primary filtering solution node. It is this job's node to provide estimates (means and covariances) of all tracked quantities. The name is somewhat of a misnomer because the filtering solution doesn't actually do "DDF" (Distributed Data Fusion), just "ET" (Event-Triggering). 
+This is the primary filtering solution node. It is this node's job to provide estimates (means and covariances) of all tracked quantities. The name is somewhat of a misnomer because the filtering solution doesn't actually do "DDF" (Distributed Data Fusion), just "ET" (Event-Triggering). 
 
 ### Functionality
 This node's theoretical functionality (the DeltaTier algorithm) is described in [this paper](https://drive.google.com/file/d/1nSslfkytGxTQvBNfssFxo53TezaEpmbx/view?usp=sharing) submitted to ACC 2022. 
+
+### Relevant Files
+* scripts/etddf_node_new.py : ROS interface for etddf
+* src/deltatier/kf_filter.py : DeltaTier implementation source file
 
 ### Interfaces
 The et-ddf node exposes two types of topics to gain access to measurements.
@@ -20,7 +24,10 @@ The et-ddf node exposes two types of topics to gain access to measurements.
 * "etddf/estimate/$agent" is the estimate topic for a specific agent.
 
 ### Inputs
-THe DeltaTier filtering solution receives ownship information (measurements of the onboard vehicle) through the robot_localization (RL) package. 
+THe DeltaTier filtering solution receives ownship information (measurements of the onboard vehicle) through the robot_localization (RL) package. This can be seen in the following diagram.
+![alt text](https://github.com/COHRINT/etddf_minau/blob/master/MultiFilterArchitecture.png?raw=true)
+
+The "Nav Filter" is RL. PSCI stands for Partial-State Covariance Intersection [1] which is an algorithm that allows combination of two estimates from two different nodes using the overlap of common states between the estimates. For Shared Information - see the buffer sharing described described by the paper referenced in the Functionality section. 
 
 ## Sonar Control Node & Associator
 The sonar control node is responsible for modifying the ping360 sonar scan for the purposes of tracking or searching for an agent. The associator node is responsible for associating a detection with an agent. 
@@ -54,3 +61,9 @@ If sonar tracking is enabled (enable_sonar_control) first we check if a non-LOST
 
 #### Publications
 * Topic: "ping360_node/sonar/set_scan". Data-type: "ping360_sonar/SonarSettings.msg"
+
+## Citations
+1. N. R. Ahmed, W. W. Whitacre, S. Moon, and E. W. Frew, “Factorized
+covariance intersection for scalable partial state decentralized data
+fusion,” in 2016 19th International Conference on Information Fusion
+(FUSION). IEEE, 2016, pp. 1049–1056.
