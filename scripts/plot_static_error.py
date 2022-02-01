@@ -1,16 +1,15 @@
-"""
-We want to open the bag and plot the innovations at the time they happened with the latest etddf estimate
-- want to make sure the etddf estimate didn't happen at the same exact time
-- we have 2 agents, each with 2 estimates. That's 4 kinds of innovations.
-
-We also have range and azimuth! Maybe just for a single agent...
-We'll do 2x2 subplot, plot the innovations at the correct time along with the measurement covariance
-"""
 from numpy.core.numeric import load
 import rosbag
 import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
+
+import matplotlib
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 22}
+
+matplotlib.rc('font', **font)
 
 # Agent 0 --> bluerov2_7
 # Agent 1 --> bluerov2_5
@@ -26,19 +25,19 @@ def normalize_times(times):
 
 def plot_error(data, events):
 
+    def add_modem_times():
+        plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted', label="Agent 0 Exchanging")
+        plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted', label="Agent 1 Exchanging")
+
     # Should loop through the keys in data in each subplot
     colors = ["b", "r", "g"]
     i=0
     for key in data:
         scenario_data = data[key]
         color = colors[i]
-
-        plt.suptitle("ET-DDF Estimate Error")
-
-        
-
-        # BLUEROV2_7 RANGE
-        plt.subplot(2,2,1)
+        # BLUEROV2_7 X ERROR
+        # plt.subplot(2,2,1)
+        plt.figure()
         bluerov_data = scenario_data["bluerov2_7"]
         times = normalize_times( bluerov_data["times"] )
         rep = np.repeat(1.5, len(times))
@@ -49,64 +48,102 @@ def plot_error(data, events):
         two_sigma = bluerov_data["x_err_cov"]
         plt.plot(times, two_sigma, c="g", label="$2\sigma$ Uncertainty Bound")
         plt.plot(times, -np.array(two_sigma), c="g")
-        plt.title("Agent 0")
-        plt.legend()
-        plt.ylabel("x position")
-            
-
-        # BLUEROV2_7 AZIMUTH
-        plt.subplot(2,2,3)
+        plt.title("Agent 0 X Error")
+        add_modem_times()
+        plt.legend(prop={'size': 16}, loc="lower left", bbox_to_anchor=(0.75,0.75))
+        plt.ylabel("x position [m]")
+        plt.xlabel("time [s]")
+        
+        i += 1
+    i=0
+    for key in data:
+        scenario_data = data[key]
+        color = colors[i]
+        # BLUEROV2_7 Y ERROR
+        # plt.subplot(2,2,3)
+        plt.figure()
         bluerov_data = scenario_data["bluerov2_7"]
         times = normalize_times( bluerov_data["times"] )
-        plt.plot(times, bluerov_data["y_err"], c="r" )
-
-        two_sigma = bluerov_data["y_err_cov"]
-        plt.plot(times, two_sigma, c="g")
-        plt.plot(times, -np.array(two_sigma), c="g")
-        plt.ylabel("y position")
+        plt.plot(times, bluerov_data["y_err"], c="r", label="Estimate Error")
         plt.plot(times, rep, c="b", label="Ground Truth Box")
         plt.plot(times, -rep, c="b")
 
-        # BLUEROV2_5 RANGE
-        plt.subplot(2,2,2)
+        two_sigma = bluerov_data["y_err_cov"]
+        plt.plot(times, two_sigma, c="g")
+        plt.plot(times, -np.array(two_sigma), c="g", label="$2\sigma$ Uncertainty Bound")
+        plt.title("Agent 0 Y Error")
+        plt.ylabel("y position [m]")
+        plt.xlabel("time [s]")
+        add_modem_times()
+        plt.legend(prop={'size': 16}, loc="lower left", bbox_to_anchor=(0.75,0.75))
+        
+        
+        i += 1
+    
+    i=0
+    for key in data:
+        scenario_data = data[key]
+        color = colors[i]
+        # BLUEROV2_5 X ERROR
+        # plt.subplot(2,2,2)
+        plt.figure()
         bluerov_data = scenario_data["bluerov2_5"]
         times = normalize_times( bluerov_data["times"] )
-        plt.plot(times, bluerov_data["x_err"], c="r" )
+        plt.plot(times, bluerov_data["x_err"], c="r", label="Estimate Error" )
+        plt.plot(times, rep, c="b",label="Ground Truth Box")
+        plt.plot(times, -rep, c="b")
 
         two_sigma = bluerov_data["x_err_cov"]
         plt.plot(times, two_sigma, c="g")
-        plt.plot(times, -np.array(two_sigma), c="g")
-        plt.title("Agent 1")
-        plt.plot(times, rep, c="b")
-        plt.plot(times, -rep, c="b")
+        plt.plot(times, -np.array(two_sigma), c="g", label="$2\sigma$ Uncertainty Bound")
+        plt.title("Agent 1 X Error")
+        plt.ylabel("x position [m]")
+        plt.xlabel("time [s]")
+        add_modem_times()
+        plt.legend(prop={'size': 16}, loc="lower left", bbox_to_anchor=(0.75,0.75))
+        
+        
+        i += 1
 
-        # # BLUEROV2_5 AZIMUTH
-        plt.subplot(2,2,4)
+    i=0
+    for key in data:
+        scenario_data = data[key]
+        color = colors[i]
+    
+        # BLUEROV2_5 Y ERROR
+        # plt.subplot(2,2,4)
+        plt.figure()
         bluerov_data = scenario_data["bluerov2_5"]
         times = normalize_times( bluerov_data["times"] )
-        plt.plot(times, bluerov_data["y_err"], c="r" )
-
-        two_sigma = bluerov_data["y_err_cov"]
-        plt.plot(times, two_sigma, c="g")
-        plt.plot(times, -np.array(two_sigma), c="g")
-        # plt.title("Modem Azimuth of Agent 1")
+        plt.plot(times, bluerov_data["y_err"], c="r", label="Estimate Error" )
         plt.plot(times, rep, c="b", label="Ground Truth Box")
         plt.plot(times, -rep, c="b")
 
+        two_sigma = bluerov_data["y_err_cov"]
+        plt.plot(times, two_sigma, c="g")
+        plt.plot(times, -np.array(two_sigma), c="g", label="$2\sigma$ Uncertainty Bound")
+        plt.ylabel("y position [m]")
+        plt.xlabel("time [s]")
+        add_modem_times()
+        plt.legend(prop={'size': 16}, loc="lower left", bbox_to_anchor=(0.75,0.75))
+        plt.title("Agent 1 Y Error")
+        
+        
         i += 1
-    plt.subplot(2,2,1)
-    plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
-    plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
-    plt.subplot(2,2,2)
-    plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted', label="Agent 0 Exchanging")
-    plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted', label="Agent 1 Exchanging")
-    plt.legend()
-    plt.subplot(2,2,3)
-    plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
-    plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
-    plt.subplot(2,2,4)
-    plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
-    plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
+
+    # plt.subplot(2,2,1)
+    # plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
+    # plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
+    # plt.subplot(2,2,2)
+    # plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted', label="Agent 0 Exchanging")
+    # plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted', label="Agent 1 Exchanging")
+    # plt.legend()
+    # plt.subplot(2,2,3)
+    # plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
+    # plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
+    # plt.subplot(2,2,4)
+    # plt.vlines(events["bluerov2_5"], -5, 5, colors="b", linestyles='dotted')
+    # plt.vlines(events["bluerov2_7"], -5, 5, colors="m", linestyles='dotted')
 
     plt.show()
 
@@ -217,7 +254,7 @@ bag = "2021-12-15-18-17-14.bag"
 bag = "2021-12-15-18-34-02.bag"
 
 bag = "final/final_multi_red.bag"
-bag = "final/final_no_red.bag"
+# bag = "final/final_no_red.bag"
 data["DeltaTier"] = load_bag(bag)
 events = get_events(bag)
 # data["No Collaboration"] = load_bag(no_collab_bag)
