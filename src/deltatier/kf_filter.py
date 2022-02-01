@@ -160,6 +160,16 @@ class KalmanFilter:
 
         return self.index
 
+    def filter_linrel_y_tracked(self, meas_value, R, collecting_agent, collected_agent):
+        startx1 = self.get_agent_state_index(collecting_agent)
+        startx2 = self.get_agent_state_index(collected_agent)
+        self.x_hat, self.P = KalmanFilter._fuse_linrel_y_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
+
+    def filter_linrel_x_tracked(self, meas_value, R, collecting_agent, collected_agent):
+        startx1 = self.get_agent_state_index(collecting_agent)
+        startx2 = self.get_agent_state_index(collected_agent)
+        self.x_hat, self.P = KalmanFilter._fuse_linrel_x_tracked(self.x_hat, self.P, startx1, startx2, meas_value, R)
+
     # Either to an agent or landmark
     def filter_range_tracked(self, meas_value, R, collecting_agent, collected_agent): 
         startx1 = self.get_agent_state_index(collecting_agent)
@@ -514,10 +524,10 @@ class KalmanFilter:
                     raise ValueError("Unrecognized measurement type: " + str(meas_type))
 
             # DEBUG CHECK FOR JUMPS
-            x_hat_before = deepcopy(self.x_hat_history_prior[index])
-            delta = x_hat - x_hat_before
-            if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
-                print("\033[91mJUMP ON MEAS PLAYBACK\033[0m")
+            # x_hat_before = deepcopy(self.x_hat_history_prior[index])
+            # delta = x_hat - x_hat_before
+            # if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
+            #     print("\033[91mJUMP ON MEAS PLAYBACK\033[0m")
             
             # Intersect with navigation filter
             if len(self.x_nav_history_prior) > index:
@@ -561,10 +571,10 @@ class KalmanFilter:
                 P = P_new
 
             # DEBUG CHECK FOR JUMPS
-            x_hat_before = deepcopy(self.x_hat_history_prior[index])
-            delta = x_hat - x_hat_before
-            if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
-                print("\033[91mJUMP ON CI\033[0m")
+            # x_hat_before = deepcopy(self.x_hat_history_prior[index])
+            # delta = x_hat - x_hat_before
+            # if abs(delta[0]) > 3 or abs(delta[1]) > 3 or abs(delta[6]) > 3 or abs(delta[7]) > 3:
+            #     print("\033[91mJUMP ON CI\033[0m")
         # end for index
         self.x_hat = x_hat
         self.P = P
@@ -786,6 +796,26 @@ class KalmanFilter:
             self.x_hat, self.P, depth, self.BLUE_NUM, self.RED_NUM, self.LANDMARK_NUM, R)
 
     @staticmethod
+    def _fuse_linrel_x_tracked(x_hat, P, startx1, startx2, meas_value, R):
+    
+        pred, H = KalmanFilter._predict_linrel_x(x_hat, startx1, startx2)
+
+        innovation = meas_value - pred
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
+    def _fuse_linrel_y_tracked(x_hat, P, startx1, startx2, meas_value, R):
+    
+        pred, H = KalmanFilter._predict_linrel_y(x_hat, startx1, startx2)
+
+        innovation = meas_value - pred
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        return x_hat, P
+
+    @staticmethod
     def _fuse_range_tracked(x_hat, P, startx1, startx2, meas_value, R):
     
         pred, H = KalmanFilter._predict_range(x_hat, startx1, startx2)
@@ -831,10 +861,18 @@ class KalmanFilter:
         H[0, startx1+2] = drdz1
 
         innovation = meas_value - pred
-        if innovation > 3.0:
-            print("\033[93mLARGE RANGE INNOVATION -- SKIPPING: {}\033[0m".format(innovation))
-        else:
-            x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+        # print("Innovation: {}".format(innovation))
+        # print([x1, y1, z1, x2, y2, z2])
+        # print(delta_pred)
+        # print(pred)
+        # print("---")
+        x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
+
+        # if innovation > 3.0:
+        #     print("\033[93mLARGE RANGE INNOVATION -- SKIPPING: {}\033[0m".format(innovation))
+            
+        # else:
+        #     x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
 
         return x_hat, P
 
@@ -860,7 +898,7 @@ class KalmanFilter:
         H[0, startx1 + 1] = dady
         
         innovation = normalize_angle( meas_value - pred )
-        if abs(innovation) < np.radians(30):
+        if abs(innovation) < np.radians(90):
             x_hat, P = KalmanFilter._fuse(x_hat, P, H, R, innovation)
         else:
             print("\033[93mModem azimuth innovation too large, rejecting: {} from {}\033[0m".format(innovation, np.degrees(meas_value)))
@@ -869,6 +907,28 @@ class KalmanFilter:
             print(delta_pred)
 
         return x_hat, P
+
+    @staticmethod
+    def _predict_linrel_y(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1+1] = -1
+        H[0, startx2+1] = 1
+
+        pred = np.dot( H, x_hat)
+        return pred, H
+    
+    @staticmethod
+    def _predict_linrel_x(x_hat, startx1, startx2):
+        NUM_STATES = x_hat.shape[0]
+
+        H = np.zeros((1, NUM_STATES))
+        H[0, startx1] = -1
+        H[0, startx2] = 1
+
+        pred = np.dot( H, x_hat)
+        return pred, H
 
     @staticmethod
     def _predict_range(x_hat, startx1, startx2):

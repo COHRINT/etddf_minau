@@ -8,9 +8,17 @@ import rosbag
 import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
+import matplotlib
 
 # Agent 0 --> bluerov2_7
 # Agent 1 --> bluerov2_5
+
+import matplotlib
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 22}
+
+matplotlib.rc('font', **font)
 
 def normalize_times(times, ref_time):
     # Normalize times
@@ -47,9 +55,9 @@ def load_bag(bag):
     times_7 = normalize_times(times_7, ref_time)
 
 
-    plt.scatter(times_5, mults_5, c="b", label="Bluerov2_5") # 1 is 5
-    plt.scatter(times_7, mults_7, c="g", label="Bluerov2_7") # 0 is 7
-    plt.ylim([1,10])
+    plt.scatter(times_5, mults_5, c="b", label="Agent 1") # 1 is 5
+    plt.scatter(times_7, mults_7, c="g", label="Agent 0") # 0 is 7
+    plt.ylim([0,11])
     plt.title("Delta-Bands Selected vs Time")
     plt.legend()
     plt.xlabel("Time (s)")
@@ -64,7 +72,7 @@ bag = "split_bag.bag"
 bag = "2021-12-15-17-05-32.bag"
 bag = "2021-12-15-17-41-11.bag"
 bag = "final/final_multi_red.bag"
-# bag = "final/final_no_red.bag"
+bag = "final/final_no_red.bag"
 load_bag(bag)
 
 ## TOTAL MEASUREMENTS

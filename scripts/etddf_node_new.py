@@ -26,6 +26,7 @@ from nav_msgs.msg import Odometry
 from minau.msg import SonarTargetList, SonarTarget
 from cuprint.cuprint import CUPrint
 from deltatier.kf_filter import KalmanFilter, MEAS_TYPES_INDICES, MEAS_COLUMNS
+from threading import Lock
 
 class ETDDF_Node:
 
@@ -34,6 +35,7 @@ class ETDDF_Node:
         self.cuprint = CUPrint("{}/etddf".format(self.my_name))
         self.blue_agent_names = rospy.get_param("~blue_team_names")
         blue_positions = rospy.get_param("~blue_team_positions")
+        self.update_lock = Lock()
 
         self.topside_name = rospy.get_param("~topside_name")
         assert self.topside_name not in self.blue_agent_names
@@ -81,27 +83,6 @@ class ETDDF_Node:
             known_posititon_unc=known_position_uncertainty,\
             unknown_agent_unc=unknown_position_uncertainty)
         
-        # Initialize the kalman filter to the correct starting estimate
-        x_hat = np.array([3.89131562419, -1.81523517305, -0.609213583867, 0.0590610492218, -0.0123524654153, 0.00180473321339, \
-                                3.38198297047, 0.159090854054, -0.610862394329, 0.0366285762217, 0.00680334780657, -0.00342542529857])
-        blue7_pos_cov = [4.066656067779953, -1.5404561786027737, -6.516080657320234e-07, 0.0, 0.0, 0.0, -1.5404561786027724, 1.3353038668609196, -7.152718624737255e-06, 0.0, 0.0, 0.0, -6.516080657320111e-07, -7.15271862473727e-06, 0.008369161321799212, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.04041716405632286, -0.0005849874715729819, -5.589835383432124e-07, 0.0, 0.0, 0.0, -0.0005849874715729821, 0.0157834857305976, 2.1024579596438633e-08, 0.0, 0.0, 0.0, -5.589835383432123e-07, 2.1024579596438752e-08, 0.021678826527810384]
-        blue7_vel_cov = [0.006970526495199368, -0.0010569644397999919, -8.688092559903357e-09, -0.0, -0.0, -0.0, -0.0010569644397999875, 0.004757777386387238, -2.2034527050738752e-08, -0.0, -0.0, -0.0, -8.68809255990197e-09, -2.203452705074336e-08, 0.0034241466326507017, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0]
-        blue5_pos_cov = [3.026238619036268, -1.4324979041230894, -5.522027094957632e-06, 0.0, 0.0, 0.0, -1.43249790412309, 1.3819694062935084, -1.2752419419034878e-06, 0.0, 0.0, 0.0, -5.52202709495763e-06, -1.2752419419034922e-06, 0.009170215343487253, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, -0.0, -0.0, 0.0, 0.0, 0.0, -0.0, -1.0, -0.0, 0.0, 0.0, 0.0, -0.0, -0.0, -1.0]
-        blue5_vel_cov = [0.0008331419165405064, -5.9810235723929415e-05, -2.108120588498449e-10, -0.0, -0.0, -0.0, -5.981023572392958e-05, 0.0006655106386352285, -4.353339389205928e-11, -0.0, -0.0, -0.0, -2.1081205884969358e-10, -4.3533393891775726e-11, 0.0005561217229920902, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -1.0]
-
-        blue7_pos_cov = np.reshape(blue7_pos_cov, (6,6))[:3,:3]
-        blue7_vel_cov = np.reshape(blue7_vel_cov, (6,6))[:3,:3]
-        blue5_pos_cov = np.reshape(blue5_pos_cov, (6,6))[:3,:3]
-        blue5_vel_cov = np.reshape(blue5_vel_cov, (6,6))[:3,:3]
-        cov = np.zeros((12,12))
-        cov[:3,:3] = blue7_pos_cov
-        cov[3:6,3:6] = blue7_vel_cov
-        cov[6:9,6:9] = blue5_pos_cov
-        cov[9:12,9:12] = blue5_vel_cov
-
-        self.kf.x_hat[:12,0] = x_hat #np.reshape(x_hat, (-1,1))
-        self.kf.P[:12,:12] = cov
-
         self.network_pub = rospy.Publisher("etddf/estimate/network", NetworkEstimate, queue_size=10)
         self.asset_pub_dict = {}
         for asset in self.blue_agent_names:
@@ -128,16 +109,22 @@ class ETDDF_Node:
         self.cuprint("Strapdown found")
 
         # Sonar Subscription
-        rospy.Subscriber("sonar_processing/target_list/associated", SonarTargetList, self.sonar_callback)
+        rospy.Subscriber("sonar_processing/target_list", SonarTargetList, self.sonar_callback)
         self.cuprint("Loaded")
 
     def sonar_callback(self, msg):
         if self.last_orientation_rad == None:
             return
-        # self.cuprint("Receiving sonar meas")
+
+        self.update_lock.acquire()
+
+        self.cuprint("Receiving sonar meas")
         collecting_agent_id = self.blue_agent_names.index(self.my_name)
         for st in msg.targets:
-            collected_agent_id = self.blue_agent_names.index( st.id )
+            if "red" in st.id:
+                collected_agent_id = len(self.blue_agent_names)
+            else:
+                collected_agent_id = self.blue_agent_names.index( st.id )
             range_meas = st.range_m
             azimuth_meas = st.bearing_rad + self.last_orientation_rad
             if self.meas_variances["sonar_range"] == -1:
@@ -149,13 +136,23 @@ class ETDDF_Node:
             else:
                 R_az = self.meas_variances["sonar_az"]
 
-            rounded_range_meas = round(range_meas, 1)
-            rounded_azimuth_meas = round(np.degrees(azimuth_meas),1)
+            # rounded_range_meas = round(range_meas, 1)
+            # rounded_azimuth_meas = round(np.degrees(azimuth_meas),1)
             # self.cuprint("{} r: {} az: {} (deg)".format(st.id, rounded_range_meas, rounded_azimuth_meas))
 
-            self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
-            self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
+            # If uncertainty greater than 10m std, approximate the range/az meas as a linrel to avoid nonlinear error spikes
+            _, P_agent, _ = self.kf.get_agent_states(collected_agent_id)
+            if np.linalg.norm( np.sqrt( np.diag(P_agent) ) ) > 14:
+                # Create relative x,y meas
+                linrel_x = np.cos(azimuth_meas) * range_meas
+                linrel_y = np.sin(azimuth_meas) * range_meas
+                self.kf.filter_linrel_x_tracked(linrel_x, R_range, collecting_agent_id, collected_agent_id)
+                self.kf.filter_linrel_y_tracked(linrel_y, R_range, collecting_agent_id, collected_agent_id)
+            else:
+                self.kf.filter_azimuth_tracked(azimuth_meas, R_az, collecting_agent_id, collected_agent_id)
+                self.kf.filter_range_tracked(range_meas, R_range, collecting_agent_id, collected_agent_id)
             self.total_meas += 2
+        self.update_lock.release()
 
     def nav_filter_callback(self, odom):
 
@@ -174,6 +171,8 @@ class ETDDF_Node:
         delta_t_ros =  t_now - self.last_update_time
         if delta_t_ros < rospy.Duration(1):
             return
+
+        self.update_lock.acquire()
 
         self.kf.propogate(self.position_process_noise, self.velocity_process_noise)
         self.update_times.append(t_now)
@@ -220,6 +219,7 @@ class ETDDF_Node:
         self.publish_estimates(t_now, last_orientation_quat, orientation_cov)
         self.last_update_time = t_now
         self.update_seq += 1
+        self.update_lock.release()
 
     def correct_strapdown(self, header, x_nav, P_nav, orientation, orientation_cov):
         msg = PoseWithCovarianceStamped()
@@ -274,14 +274,15 @@ class ETDDF_Node:
         
         if self.red_agent_exists:
             asset = self.red_agent_name
-            ind = self.blue_agent_names.index(asset)
-            x_hat_agent, P_agent = self.kf.get_agent_states(ind)
+            ind = len(self.blue_agent_names)
+            x_hat_agent, P_agent, _ = self.kf.get_agent_states(ind)
+            pose_cov = np.zeros((6,6))
             pose_cov[:3,:3] = P_agent[:3,:3]
             red_agent_depth = -0.7
-            pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],red_agent_depth), Quaternion(0,0,0,1))
+            pose = Pose(Point(x_hat_agent[0],x_hat_agent[1],x_hat_agent[2]), Quaternion(0,0,0,1))
             pose_cov[3:,3:] = -np.eye(3)
             pwc = PoseWithCovariance(pose, list(pose_cov.flatten()))
-            twist_cov = -np.eye((6,6))
+            twist_cov = -np.eye(6)
             twist_cov[:3,:3] = P_agent[3:6,3:6]
             tw = Twist()
             tw.linear = Vector3(x_hat_agent[3],x_hat_agent[4],x_hat_agent[5])
@@ -296,6 +297,7 @@ class ETDDF_Node:
 
     def meas_pkg_callback(self, msg):
         # Modem Meas taken by topside
+        self.update_lock.acquire()
         if msg.src_asset == self.topside_name:
             self.cuprint("Receiving Surface Modem Measurements")
             meas_indices = []
@@ -311,8 +313,9 @@ class ETDDF_Node:
                     modem_ori = np.radians(self.force_modem_pose[3])
                 # self.cuprint("Modem loc: {} Modem pose: {}".format(modem_loc, modem_ori))
 
-                # meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
-                meas_index = len(self.update_times) - 5
+                meas_index = min(range(len(self.update_times)), key=lambda i: abs( (self.update_times[i]-meas.stamp).to_sec() ))
+                self.cuprint("Meas index: {}. Current: {}".format(meas_index, len(self.update_times)))
+                # meas_index = len(self.update_times) - 5
                 if meas_index < 0:
                     meas_index = None
                 meas_indices.append(meas_index)
@@ -343,21 +346,24 @@ class ETDDF_Node:
                 min_index = min(meas_indices)
                 my_id = self.blue_agent_names.index(self.my_name)
 
-                x_hat_prior = deepcopy(self.kf.x_hat)[:12]
+                # x_hat_prior = deepcopy(self.kf.x_hat)[:12]
 
                 self.kf.catch_up(min_index, modem_loc, self.position_process_noise, self.velocity_process_noise, my_id, fast_ci=False)
                 self.correct_strapdown_next_seq = True
 
-                x_hat_post = deepcopy(self.kf.x_hat)[:12]
-                delta = x_hat_post - x_hat_prior
-                if abs(delta[1]) > 4 or abs(delta[7]) > 4:
-                    raise ValueError("JUMP IN Y IN CATCH UP!")
+                # x_hat_post = deepcopy(self.kf.x_hat)[:12]
+                # delta = x_hat_post - x_hat_prior
+                # if np.linalg.norm(delta[:2]) > 8 or np.linalg.norm(delta[6:8]) > 8:
+                #     self.x_hat[:12] = x_hat_prior
+                #     print("Large jump in position --> rejecting!")
+                # if abs(delta[1]) > 4 or abs(delta[7]) > 4:
+                    # raise ValueError("JUMP IN Y IN CATCH UP!")
 
         elif self.is_deltatier:
             self.cuprint("receiving buffer")
             # Now turn the measurent package into a ledger
-            MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
-            MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
+            # MEAS_COLUMNS = ["type", "index", "startx1", "startx2", "data", "R"]
+            # MEAS_TYPES_INDICES = ["modem_range", "modem_azimuth", "sonar_range", "sonar_azimuth", "sonar_range_implicit", "sonar_azimuth_implicit"]
 
             R_az = self.meas_variances["sonar_az"]
             R_range = self.meas_variances["sonar_range"]
@@ -390,7 +396,7 @@ class ETDDF_Node:
             # print(blocks)
 
             # Check for difference in first 2 agents
-            x_hat_prior = deepcopy(self.kf.x_hat)[:12]
+            # x_hat_prior = deepcopy(self.kf.x_hat)[:12]
 
             self.kf.rx_buffer(
                 msg.delta_multiplier, 
@@ -401,11 +407,14 @@ class ETDDF_Node:
                 self.velocity_process_noise, 
                 self.blue_agent_names.index( self.my_name )
             )
-            x_hat_post = deepcopy(self.kf.x_hat)[:12]
+            # x_hat_post = deepcopy(self.kf.x_hat)[:12]
 
-            delta = x_hat_post - x_hat_prior
-            if abs(delta[1]) > 4 or abs(delta[7]) > 4:
-                raise ValueError("JUMP IN Y IN RX BUFFER!")
+            # delta = x_hat_post - x_hat_prior
+            # if np.linalg.norm(delta[:2]) > 8 or np.linalg.norm(delta[6:8]) > 8:
+            #     self.x_hat[:12] = x_hat_prior
+            #     print("Large jump in position --> rejecting!")
+            # if abs(delta[1]) > 4 or abs(delta[7]) > 4:
+                # raise ValueError("JUMP IN Y IN RX BUFFER!")
 
             # # Loop through buffer and see if we've found the red agent
             # for i in range(len(msg.measurements)):
@@ -416,6 +425,7 @@ class ETDDF_Node:
             # implicit_cnt, explicit_cnt = self.filter.receive_buffer(msg.measurements, msg.delta_multiplier, msg.src_asset)
             
             # implicit_cnt, explicit_cnt = self.filter.catch_up(msg.delta_multiplier, msg.measurements, self.Q, msg.all_measurements)
+        self.update_lock.release()
 
     def get_meas_pkg_callback(self, req):
         self.cuprint("pulling buffer")

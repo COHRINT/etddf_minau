@@ -14,6 +14,12 @@ import matplotlib.pyplot as plt
 
 # Agent 0 --> bluerov2_7
 # Agent 1 --> bluerov2_5
+# import matplotlib
+# font = {'family' : 'normal',
+#         'weight' : 'bold',
+#         'size'   : 18}
+
+# matplotlib.rc('font', **font)
 
 def normalize_times(times):
     # Normalize times
@@ -217,7 +223,7 @@ bag = "2021-12-15-18-17-14.bag"
 bag = "2021-12-15-18-34-02.bag"
 
 bag = "final/final_multi_red.bag"
-bag = "final/final_no_red.bag"
+# bag = "final/final_no_red.bag"
 data["DeltaTier"] = load_bag(bag)
 events = get_events(bag)
 # data["No Collaboration"] = load_bag(no_collab_bag)
