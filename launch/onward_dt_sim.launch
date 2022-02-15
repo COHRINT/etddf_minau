@@ -1,0 +1,26 @@
+<launch>
+
+<!-- we need to launch 
+for each agent
+- etddf
+- associator
+- strapdown 
+-->
+
+  <include file="$(find minau)/launch/vehicle.filter.launch">
+    <arg name="asset_id" value="3"/>
+    <arg name="blue_team_names" value="[bluerov2_3, bluerov2_4, red_actor_0]" />
+    <arg name="blue_team_positions_enu" value= "[[0,8,0],[0,3,0], []]" />
+  </include>
+
+  <include file="$(find minau)/launch/vehicle.filter.launch">
+    <arg name="asset_id" value="4"/>
+    <arg name="blue_team_names" value="[bluerov2_3, bluerov2_4, red_actor_0]" />
+    <arg name="blue_team_positions_enu" value= "[[0,8,0],[0,3,0], []]" />
+  </include>
+
+
+
+
+
+</launch>
